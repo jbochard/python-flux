@@ -1,16 +1,16 @@
 [project]
 name = "python-flux"
-version = "0.0.1"
+version = "0.0.2"
 authors = [
   { name="Juan Pablo Bochard", email="jbochard@gmail.com" },
 ]
 description = "Librería que utiliza generadores de python para simular procesamiento de flujo de datos"
 readme = "README.md"
-license = { file="LICENSE" }
+license = "GPLv3"
 requires-python = ">=3.7"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: OS Independent",
 ]
 
