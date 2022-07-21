@@ -1,6 +1,6 @@
 import glob
 
-from flux.flux import Flux
+from python_flux.flux import Flux
 
 
 def from_iterator(iterator):
