@@ -6,11 +6,10 @@ authors = [
 ]
 description = "Librería que utiliza generadores de python para simular procesamiento de flujo de datos"
 readme = "README.md"
-license = "GPLv3"
+license = "GPL-3.0-or-later"
 requires-python = ">=3.7"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: OS Independent",
 ]
 
