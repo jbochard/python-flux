@@ -1,13 +1,12 @@
 [project]
 name = "python-flux"
-version = "0.0.2"
 authors = [
   { name="Juan Pablo Bochard", email="jbochard@gmail.com" },
 ]
 description = "Librería que utiliza generadores de python para simular procesamiento de flujo de datos"
-readme = "README.md"
-license = "GPL-3.0-or-later"
+license = {text="GPL-3.0-or-later"}
 requires-python = ">=3.7"
+dynamic = ["version", "readme"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
@@ -18,5 +17,9 @@ classifiers = [
 "Bug Tracker" = "https://github.com/jbochard/python-flux/issues"
 
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = {file = "version.txt"}
+readme = {file = ["README.md"]}
