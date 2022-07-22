@@ -44,8 +44,9 @@ class FFilter(Flux):
 
     def _next(self):
         for value in super(FFilter, self)._next():
-            if self.predicate(value):
-                yield value
+            if value is not None:
+                if self.predicate(value):
+                    yield value
 
 
 class FTake(Flux):
@@ -56,11 +57,12 @@ class FTake(Flux):
 
     def _next(self):
         for value in super(FTake, self)._next():
-            self.idx = self.idx + 1
-            if self.idx <= self.count:
-                yield value
-            else:
-                break
+            if value is not None:
+                self.idx = self.idx + 1
+                if self.idx <= self.count:
+                    yield value
+                else:
+                    break
 
 
 class FDelay(Flux):
@@ -70,8 +72,9 @@ class FDelay(Flux):
 
     def _next(self):
         for value in super(FDelay, self)._next():
-            yield value
-            time.sleep(self.delay)
+            if value is not None:
+                yield value
+                time.sleep(self.delay)
 
 
 class FCacheToFiles(Flux):
@@ -97,11 +100,12 @@ class FCacheToFiles(Flux):
             files = glob.glob(f"{self.directory}/{self.prefix}_*.txt")
             if len(files) == 0:
                 for value in super(FCacheToFiles, self)._next():
-                    key = self.key_func(value)
-                    line = self.serialize_func(value)
-                    with open(f"{self.directory}/{self.prefix}_{key}.txt", "w") as f:
-                        f.write(line)
-                    yield value
+                    if value is not None:
+                        key = self.key_func(value)
+                        line = self.serialize_func(value)
+                        with open(f"{self.directory}/{self.prefix}_{key}.txt", "w") as f:
+                            f.write(line)
+                        yield value
             else:
                 for file in files:
                     with open(file, "r") as f:
@@ -119,8 +123,9 @@ class FLog(Flux):
 
     def _next(self):
         for value in super(FLog, self)._next():
-            print(f"{str(self.function_log(value))}", flush=True)
-            yield value
+            if value is not None:
+                print(f"{str(self.function_log(value))}", flush=True)
+                yield value
 
 
 class FMap(Flux):
@@ -130,7 +135,8 @@ class FMap(Flux):
 
     def _next(self):
         for value in super(FMap, self)._next():
-            yield self.function(value)
+            if value is not None:
+                yield self.function(value)
 
 
 class FFlatMap(Flux):
@@ -140,8 +146,9 @@ class FFlatMap(Flux):
 
     def _next(self):
         for value in super(FFlatMap, self)._next():
-            for v in self.function(value):
-                yield v
+            if value is not None:
+                for v in self.function(value):
+                    yield v
 
 
 class FSubscribe(object):
@@ -153,7 +160,8 @@ class FSubscribe(object):
     def run(self):
         try:
             for value in self.flux._next():
-                self.on_success(value)
+                if value is not None:
+                    self.on_success(value)
         except Exception as e:
             self.on_error(e)
             traceback.print_exc()
