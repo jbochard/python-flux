@@ -148,7 +148,8 @@ class FFlatMap(Flux):
         for value in super(FFlatMap, self)._next():
             if value is not None:
                 for v in self.function(value):
-                    yield v
+                    if v is not None:
+                        yield v
 
 
 class FSubscribe(object):
