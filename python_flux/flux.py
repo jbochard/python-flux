@@ -4,8 +4,21 @@ import time
 import traceback
 
 
-class Flux(object):
-    def __init__(self, flux):
+class Context(object):
+    def __init__(self, ctx={}):
+        self.context = ctx
+
+    def get_context(self):
+        return self.context
+
+    def update_context(self, ctx):
+        self.context.update(ctx)
+
+
+
+class Flux(Context):
+    def __init__(self, flux, context={}):
+        super(Flux, self).__init__(context)
         self.prev = flux
 
     def _next(self):
@@ -17,6 +30,9 @@ class Flux(object):
 
     def map(self, f):
         return FMap(f, self)
+
+    def map_context(self, f):
+        return FMapContext(f, self)
 
     def flat_map(self, f):
         return FFlatMap(f, self)
@@ -139,6 +155,20 @@ class FMap(Flux):
                 yield self.function(value)
 
 
+class FMapContext(Flux):
+    def __init__(self, func, flux):
+        super().__init__(flux)
+        self.function = func
+
+    def _next(self):
+        for value in super(FMapContext, self)._next():
+            if value is not None:
+                ctx = self.get_context()
+                nctx = self.function(value, ctx)
+                self.update_context(nctx)
+                yield value
+
+
 class FFlatMap(Flux):
     def __init__(self, func, flux):
         super().__init__(flux)
@@ -154,8 +184,9 @@ class FFlatMap(Flux):
                             yield v
 
 
-class FSubscribe(object):
-    def __init__(self, on_success, on_error, f):
+class FSubscribe(Context):
+    def __init__(self, on_success, on_error, f, context={}):
+        super().__init__(context)
         self.on_success = on_success
         self.on_error = on_error
         self.flux = f
@@ -168,4 +199,3 @@ class FSubscribe(object):
         except Exception as e:
             self.on_error(e)
             traceback.print_exc()
-
