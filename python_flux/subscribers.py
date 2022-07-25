@@ -2,11 +2,17 @@ import traceback
 
 
 class SSubscribe(object):
-    def __init__(self, on_success, on_error, context, f):
+    def __init__(self, on_success, on_error, ctx, f):
         self.on_success = on_success
         self.on_error = on_error
-        self.context = context
+        if type(ctx) == dict:
+            self.context = self.__default_context(ctx)
+        else:
+            self.context = ctx
         self.flux = f
+
+    def __default_context(ctx):
+        return ctx
 
     def __gen(self, context):
         for value, ctx in self.flux._next(context):

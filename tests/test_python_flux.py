@@ -31,7 +31,7 @@ def test_flatmap():
 def test_take():
     flux = from_iterator(range(0, 10))\
         .take(3)
-    assert list(flux.subscribe()) == [0,1,2]
+    assert list(flux.subscribe()) == [0, 1, 2]
 
 
 def test_map_context():
