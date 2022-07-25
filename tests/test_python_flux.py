@@ -61,4 +61,3 @@ if __name__ == "__main__":
     test_map_context()
     test_flatmap()
     test_from_callable()
-    

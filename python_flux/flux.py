@@ -31,8 +31,8 @@ class Flux(object):
     def log_context(self, log=lambda c: str(c)):
         return FLogContext(log, self)
 
-    def subscribe(self, on_success=lambda v: print(str(v)), on_error=lambda e: print(f"Exception: {e}"), context={}):
-        return SSubscribe(on_success, on_error, context, self)
+    def subscribe(self, context={}):
+        return SSubscribe(context, self)
 
 
 class Stream(Flux):
