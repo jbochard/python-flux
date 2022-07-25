@@ -1,5 +1,7 @@
 import time
 
+from jsonmerge import merge
+
 from python_flux.subscribers import SSubscribe
 
 
@@ -51,8 +53,7 @@ class Stream(Flux):
             if value is not None:
                 for v in self._map_value_gen(value, ctx):
                     for c in self._map_context_gen(value, ctx):
-                        ctx.update(c)
-                        yield v, ctx
+                        yield v, merge(ctx, c)
 
 
 class FFilter(Stream):
