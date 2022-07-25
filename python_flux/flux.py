@@ -44,7 +44,7 @@ class Stream(Flux):
         yield value
 
     def _map_context_gen(self, value, context):
-        yield context
+        yield {}
 
     def _next(self, context):
         for value, ctx in self.upstream._next(context):

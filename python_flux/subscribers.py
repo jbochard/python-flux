@@ -17,7 +17,7 @@ class SSubscribe(object):
     def __iter__(self):
         return iter(map(lambda t: t[0], iter(self.__gen(self.context))))
 
-    def foreach(self, on_success, on_error):
+    def foreach(self, on_success=lambda v, c: print(v), on_error=lambda e, c: print(e)):
         try:
             for value, ctx in self.__gen(self.context):
                 on_success(value, ctx)
