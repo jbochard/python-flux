@@ -22,6 +22,6 @@ class SSubscribe(object):
             for value, ctx in self.__gen(self.context):
                 on_success(value, ctx)
         except Exception as e:
-            on_error(e, ctx)
+            on_error(e, self.context)
             traceback.print_exc()
 
