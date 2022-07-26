@@ -19,11 +19,16 @@ class SSubscribe(object):
         self.context = merge(self.context, ctx)
         return value
 
-    def foreach(self, on_success=lambda v: print(v), on_error=lambda e: print(e)):
+    def __default_success(v):
+        pass
+
+    def __default_error(e):
+        traceback.print_exception(e)
+
+    def foreach(self, on_success=__default_success, on_error=__default_error):
         try:
             for value in self:
                 on_success(value)
         except Exception as e:
             on_error(e)
-            traceback.print_exc()
 
