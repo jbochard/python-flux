@@ -136,7 +136,7 @@ class FMapContext(Stream):
         value, ctx = self.upstream.next(context)
         while value is None:
             value, ctx = self.upstream.next(context)
-        return value, self.function(value, ctx)
+        return value, merge(ctx, self.function(value, ctx))
 
 
 class FFlatMap(Stream):

@@ -44,7 +44,8 @@ def test_map_context():
     flux = from_iterator(range(0, 10))\
         .map_context(inc) \
         .map(lambda v, c: c['inc'])\
-        .subscribe(context={"inc": 1})
+        .log_context()\
+        .subscribe(context={"inc": 1, "test": True})
 
     assert list(flux) == [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
@@ -53,11 +54,7 @@ def test_from_callable():
     def context_func():
         return {'count': 15}
 
-    def iterable(ctx):
-        for i in range(0, ctx['count']):
-            yield i
-
-    flux = from_callable(iterable)
+    flux = from_callable(lambda c: from_iterator(range(0, c['count'])))
     assert list(flux.subscribe(context=context_func)) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
 
 
