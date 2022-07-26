@@ -88,7 +88,7 @@ class FDelay(Stream):
         value, ctx = self.upstream.next(context)
         while value is None:
             value, ctx = self.upstream.next(context)
-            time.sleep(self.delay)
+        time.sleep(self.delay)
         return value, ctx
 
 
