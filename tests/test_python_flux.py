@@ -6,6 +6,15 @@ def test_iterator():
     assert list(flux.subscribe()) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 
+def test_foreach():
+    tmp = []
+    from_iterator(range(0, 10))\
+        .subscribe() \
+        .foreach(on_success=lambda v: tmp.append(v))
+
+    assert tmp == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+
 def test_filter():
     flux = from_iterator(range(0, 10))\
         .filter(lambda v: v % 2 == 0)
@@ -44,7 +53,6 @@ def test_map_context():
     flux = from_iterator(range(0, 10))\
         .map_context(inc) \
         .map(lambda v, c: c['inc'])\
-        .log_context()\
         .subscribe(context={"inc": 1, "test": True})
 
     assert list(flux) == [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
