@@ -6,8 +6,6 @@ from python_flux.subscribers import SSubscribe
 
 
 class Flux(object):
-    def __init__(self):
-        super(Flux, self).__init__()
 
     def filter(self, f):
         return FFilter(f, self)
@@ -42,18 +40,11 @@ class Stream(Flux):
         super(Stream, self).__init__()
         self.upstream = up
 
-    def _map_value_gen(self, value, context):
-        yield value
-
-    def _map_context_gen(self, value, context):
-        yield {}
-
-    def _next(self, context):
-        for value, ctx in self.upstream._next(context):
-            if value is not None:
-                for v in self._map_value_gen(value, ctx):
-                    for c in self._map_context_gen(value, ctx):
-                        yield v, merge(ctx, c)
+    def next(self, context):
+        value, ctx = self.upstream.next(context)
+        while value is None:
+            value, ctx = self.upstream.next(context)
+        return value, ctx
 
 
 class FFilter(Stream):
@@ -61,9 +52,11 @@ class FFilter(Stream):
         super().__init__(flux)
         self.predicate = p
 
-    def _map_value_gen(self, value, context):
-        if self.predicate(value):
-            yield value
+    def next(self, context):
+        value, ctx = self.upstream.next(context)
+        while value is None or not self.predicate(value):
+            value, ctx = self.upstream.next(context)
+        return value, ctx
 
 
 class FTake(Stream):
@@ -72,12 +65,15 @@ class FTake(Stream):
         self.count = count
         self.idx = 0
 
-    def _map_value_gen(self, value, context):
+    def next(self, context):
+        value, ctx = self.upstream.next(context)
+        while value is None:
+            value, ctx = self.upstream.next(context)
         self.idx = self.idx + 1
         if self.idx <= self.count:
-            yield value
+            return value, ctx
         else:
-            return
+            raise StopIteration()
 
 
 class FDelay(Stream):
@@ -85,9 +81,12 @@ class FDelay(Stream):
         super().__init__(flux)
         self.delay = delay
 
-    def _map_value_gen(self, value, context):
-        yield value
-        time.sleep(self.delay)
+    def next(self, context):
+        value, ctx = self.upstream.next(context)
+        while value is None:
+            value, ctx = self.upstream.next(context)
+            time.sleep(self.delay)
+        return value, ctx
 
 
 class FLog(Stream):
@@ -95,9 +94,12 @@ class FLog(Stream):
         super().__init__(flux)
         self.function_log = log
 
-    def _map_value_gen(self, value, context):
-        print(f"{str(self.function_log(value))}", flush=True)
-        yield value
+    def next(self, context):
+        value, ctx = self.upstream.next(context)
+        while value is None:
+            value, ctx = self.upstream.next(context)
+            print(f"{str(self.function_log(value))}", flush=True)
+        return value, ctx
 
 
 class FLogContext(Stream):
@@ -105,9 +107,12 @@ class FLogContext(Stream):
         super().__init__(flux)
         self.function_log = log
 
-    def _map_context_gen(self, value, context):
-        print(f"{str(self.function_log(context))}", flush=True)
-        yield context
+    def next(self, context):
+        value, ctx = self.upstream.next(context)
+        while value is None:
+            value, ctx = self.upstream.next(context)
+        print(f"{str(self.function_log(ctx))}", flush=True)
+        return value, ctx
 
 
 class FMap(Stream):
@@ -115,8 +120,11 @@ class FMap(Stream):
         super().__init__(flux)
         self.function = func
 
-    def _map_value_gen(self, value, context):
-        yield self.function(value, context)
+    def next(self, context):
+        value, ctx = self.upstream.next(context)
+        while value is None:
+            value, ctx = self.upstream.next(context)
+        return self.function(value, ctx), ctx
 
 
 class FMapContext(Stream):
@@ -124,18 +132,31 @@ class FMapContext(Stream):
         super().__init__(flux)
         self.function = func
 
-    def _map_context_gen(self, value, context):
-        yield self.function(value, context)
+    def next(self, context):
+        value, ctx = self.upstream.next(context)
+        while value is None:
+            value, ctx = self.upstream.next(context)
+        return value, self.function(value, ctx)
 
 
 class FFlatMap(Stream):
     def __init__(self, func, flux):
         super().__init__(flux)
         self.function = func
+        self.parent = None
 
-    def _map_value_gen(self, value, context):
-        gen = self.function(value, context)
-        if gen is not None:
-            for v in gen:
-                if v is not None:
-                    yield v
+    def next(self, context):
+        ctx = context
+        while True:
+            while self.parent is None:
+                value, ctx = self.upstream.next(context)
+                while value is None:
+                    value, ctx = self.upstream.next(context)
+                self.parent = self.function(value, ctx).subscribe(ctx)
+            try:
+                v = next(self.parent)
+                while v is None:
+                    v = next(self.parent)
+                return v, ctx
+            except StopIteration as si:
+                self.parent = None

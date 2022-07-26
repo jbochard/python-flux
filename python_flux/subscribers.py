@@ -1,5 +1,7 @@
 import traceback
 
+from jsonmerge import merge
+
 
 class SSubscribe(object):
     def __init__(self, ctx, f):
@@ -9,19 +11,19 @@ class SSubscribe(object):
             self.context = ctx()
         self.flux = f
 
-    def __gen(self, context):
-        for value, ctx in self.flux._next(context):
-            if value is not None:
-                yield value, ctx
-
     def __iter__(self):
-        return iter(map(lambda t: t[0], iter(self.__gen(self.context))))
+        return self
 
-    def foreach(self, on_success=lambda v, c: print(v), on_error=lambda e, c: print(e)):
+    def __next__(self):
+        value, ctx = self.flux.next(self.context)
+        self.context = merge(self.context, ctx)
+        return value
+
+    def foreach(self, on_success=lambda v: print(v), on_error=lambda e: print(e)):
         try:
-            for value, ctx in self.__gen(self.context):
-                on_success(value, ctx)
+            for value in self:
+                on_success(value)
         except Exception as e:
-            on_error(e, self.context)
+            on_error(e)
             traceback.print_exc()
 

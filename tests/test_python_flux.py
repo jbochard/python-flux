@@ -20,12 +20,12 @@ def test_map():
 
 def test_flatmap():
     def tmp(v, c):
-        for i in range(0, 3):
-            yield v + i
+        return from_iterator((0, 3))\
+            .map(lambda i, ic: v + i)
 
     flux = from_iterator(range(0, 5))\
         .flat_map(tmp)
-    assert list(flux.subscribe()) == [0, 1, 2, 1, 2, 3, 2, 3, 4, 3, 4, 5, 4, 5, 6]
+    assert list(flux.subscribe()) == [0, 3, 1, 4, 2, 5, 3, 6, 4, 7]
 
 
 def test_take():
@@ -35,10 +35,18 @@ def test_take():
 
 
 def test_map_context():
+    def add(v, c):
+        return v + c['inc']
+
+    def inc(v, c):
+        return {'inc': c['inc'] + 1}
+
     flux = from_iterator(range(0, 10))\
-        .map_context(lambda v, c: {"inc": c["inc"] + 1})\
-        .map(lambda v, c: v + c['inc'])
-    assert list(flux.subscribe(context={"inc": 0})) == [1, 3, 5, 7, 9, 11, 13, 15, 17, 19]
+        .map_context(inc) \
+        .map(lambda v, c: c['inc'])\
+        .subscribe(context={"inc": 1})
+
+    assert list(flux) == [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
 
 def test_from_callable():
