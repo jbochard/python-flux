@@ -39,6 +39,6 @@ class PFromCallable(Producer):
 
     def next(self, context):
         if self.parent is None:
-            self.parent = self.function_gen(context)
+            self.parent = self.function_gen(context).subscribe(context)
         return next(self.parent), context
 
