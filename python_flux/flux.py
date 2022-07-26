@@ -19,6 +19,9 @@ class Flux(object):
     def flat_map(self, f):
         return FFlatMap(f, self)
 
+    def do_on_next(self, f):
+        return FDoOnNext(f, self)
+
     def delay(self, d):
         return FDelay(d, self)
 
@@ -143,20 +146,33 @@ class FFlatMap(Stream):
     def __init__(self, func, flux):
         super().__init__(flux)
         self.function = func
-        self.parent = None
+        self.current = None
 
     def next(self, context):
         ctx = context
         while True:
-            while self.parent is None:
+            while self.current is None:
                 value, ctx = self.upstream.next(context)
                 while value is None:
                     value, ctx = self.upstream.next(context)
-                self.parent = self.function(value, ctx).subscribe(ctx)
+                self.current = self.function(value, ctx).subscribe(ctx)
             try:
-                v = next(self.parent)
+                v = next(self.current)
                 while v is None:
-                    v = next(self.parent)
+                    v = next(self.current)
                 return v, ctx
             except StopIteration as si:
-                self.parent = None
+                self.current = None
+
+
+class FDoOnNext(Stream):
+    def __init__(self, func, flux):
+        super().__init__(flux)
+        self.function = func
+
+    def next(self, context):
+        value, ctx = self.upstream.next(context)
+        while value is None:
+            value, ctx = self.upstream.next(context)
+        self.function(value, ctx)
+        return value, ctx

@@ -28,7 +28,10 @@ class PFromIterator(Producer):
             raise e
 
     def next(self, context):
-        return next(self.iterator), context
+        value = next(self.iterator)
+        while value is None:
+            value = next(self.iterator)
+        return value, context
 
 
 class PFromCallable(Producer):
@@ -40,5 +43,12 @@ class PFromCallable(Producer):
     def next(self, context):
         if self.parent is None:
             self.parent = self.function_gen(context).subscribe(context)
-        return next(self.parent), context
+
+        value = next(self.parent)
+        while value is None:
+            value = next(self.parent)
+        return value, context
+
+
+        return next(self.current), context
 
