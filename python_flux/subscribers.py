@@ -26,7 +26,7 @@ class SForeach(SSubscribe):
 
     def __next__(self):
         try:
-            value, ctx = super(SForeach, self).__next__()
+            value = super(SForeach, self).__next__()
             self.on_success(value)
             return value
         except Exception as e:

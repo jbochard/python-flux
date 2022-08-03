@@ -1,4 +1,4 @@
-from python_flux.producers import from_iterator, from_callable
+from python_flux.producers import from_iterator, from_generator
 
 
 def test_iterator():
@@ -9,7 +9,6 @@ def test_iterator():
 def test_foreach():
     tmp = []
     from_iterator(range(0, 10))\
-        .subscribe() \
         .foreach(on_success=lambda v: tmp.append(v))
 
     assert tmp == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -58,12 +57,13 @@ def test_map_context():
     assert list(flux) == [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
 
-def test_from_callable():
-    def context_func():
-        return {'count': 15}
+def test_from_generator():
+    def generator(context):
+        for i in range(10):
+            yield i
 
-    flux = from_callable(lambda c: from_iterator(range(0, c['count'])))
-    assert list(flux.subscribe(context=context_func)) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+    flux = from_generator(generator)
+    assert list(flux.subscribe()) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 
 if __name__ == "__main__":
@@ -73,4 +73,4 @@ if __name__ == "__main__":
     test_map()
     test_map_context()
     test_flatmap()
-    test_from_callable()
+    test_from_generator()

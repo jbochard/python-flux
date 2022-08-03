@@ -33,14 +33,14 @@ class PFromIterator(Producer):
 
 
 class PFromGenerator(Producer):
-    def __init__(self, generator):
+    def __init__(self, function_gen):
         super(PFromGenerator, self).__init__()
-        if type(generator) == Flux:
-            self.generator = generator
-        else:
-            raise Exception("generator must be a Flux")
+        self.function_gen = function_gen
+        self.generator = None
 
     def next(self, context):
+        if self.generator is None:
+            self.generator = self.function_gen(context)
         value = next(self.generator)
         while value is None:
             value = next(self.generator)

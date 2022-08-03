@@ -9,13 +9,11 @@ from python_flux.subscribers import SSubscribe, SForeach
 
 class Flux(object):
 
-    @staticmethod
     def __default_success(value):
         pass
 
-    @staticmethod
     def __default_error(e):
-        traceback.print_exception(e)
+        traceback.print_exception(type(e), e, e.__traceback__)
 
     def filter(self, f):
         return FFilter(f, self)
@@ -141,7 +139,7 @@ class FMap(Stream):
         self.function = func
 
     def next(self, context):
-        value, ctx = super(FLogContext, self).next(context)
+        value, ctx = super(FMap, self).next(context)
         return self.function(value, ctx), ctx
 
 
@@ -151,7 +149,7 @@ class FMapContext(Stream):
         self.function = func
 
     def next(self, context):
-        value, ctx = super(FLogContext, self).next(context)
+        value, ctx = super(FMapContext, self).next(context)
         return value, merge(ctx, self.function(value, ctx))
 
 
@@ -162,9 +160,11 @@ class FFlatMap(Stream):
         self.current = None
 
     def next(self, context):
-        while self.current is None:
-            value, ctx = super(FFlatMap, self).next(context)
-            self.current = self.function().subscribe(ctx)
+        ctx = context
+        while True:
+            while self.current is None:
+                value, ctx = super(FFlatMap, self).next(context)
+                self.current = self.function(value, ctx).subscribe(ctx)
             try:
                 v = next(self.current)
                 while v is None:
