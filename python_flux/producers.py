@@ -1,10 +1,8 @@
-import glob
-
 from python_flux.flux import Flux
 
 
-def from_callable(callable_gen):
-    return PFromCallable(callable_gen)
+def from_generator(generator):
+    return PFromGenerator(generator)
 
 
 def from_iterator(iterator):
@@ -23,7 +21,7 @@ class PFromIterator(Producer):
     def __init__(self, iterator):
         super(PFromIterator, self).__init__()
         try:
-            self.iterator = iter(iterator)
+            self.iterator = iterator if type(iterator) is iter else iter(iterator)
         except TypeError as e:
             raise e
 
@@ -34,21 +32,16 @@ class PFromIterator(Producer):
         return value, context
 
 
-class PFromCallable(Producer):
-    def __init__(self, callable_gen):
-        super(PFromCallable, self).__init__()
-        self.function_gen = callable_gen
-        self.parent = None
+class PFromGenerator(Producer):
+    def __init__(self, generator):
+        super(PFromGenerator, self).__init__()
+        if type(generator) == Flux:
+            self.generator = generator
+        else:
+            raise Exception("generator must be a Flux")
 
     def next(self, context):
-        if self.parent is None:
-            self.parent = self.function_gen(context).subscribe(context)
-
-        value = next(self.parent)
+        value = next(self.generator)
         while value is None:
-            value = next(self.parent)
+            value = next(self.generator)
         return value, context
-
-
-        return next(self.current), context
-

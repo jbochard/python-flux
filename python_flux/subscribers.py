@@ -1,5 +1,3 @@
-import traceback
-
 from jsonmerge import merge
 
 
@@ -19,16 +17,18 @@ class SSubscribe(object):
         self.context = merge(self.context, ctx)
         return value
 
-    def __default_success(v):
-        pass
 
-    def __default_error(e):
-        traceback.print_exception(e)
+class SForeach(SSubscribe):
+    def __init__(self, on_success, on_error, ctx, f):
+        super(SForeach, self).__init__(ctx, f)
+        self.on_success = on_success
+        self.on_error = on_error
 
-    def foreach(self, on_success=__default_success, on_error=__default_error):
+    def __next__(self):
         try:
-            for value in self:
-                on_success(value)
+            value, ctx = super(SForeach, self).__next__()
+            self.on_success(value)
+            return value
         except Exception as e:
-            on_error(e)
-
+            self.on_error(e)
+            raise e

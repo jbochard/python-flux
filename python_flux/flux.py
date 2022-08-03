@@ -1,11 +1,21 @@
 import time
+import traceback
+import logging
 
 from jsonmerge import merge
 
-from python_flux.subscribers import SSubscribe
+from python_flux.subscribers import SSubscribe, SForeach
 
 
 class Flux(object):
+
+    @staticmethod
+    def __default_success(value):
+        pass
+
+    @staticmethod
+    def __default_error(e):
+        traceback.print_exception(e)
 
     def filter(self, f):
         return FFilter(f, self)
@@ -37,6 +47,10 @@ class Flux(object):
     def subscribe(self, context={}):
         return SSubscribe(context, self)
 
+    def foreach(self, on_success=__default_success, on_error=__default_error, context={}):
+        for _ in SForeach(on_success, on_error, context, self):
+            pass
+
 
 class Stream(Flux):
     def __init__(self, up):
@@ -56,9 +70,9 @@ class FFilter(Stream):
         self.predicate = p
 
     def next(self, context):
-        value, ctx = self.upstream.next(context)
-        while value is None or not self.predicate(value):
-            value, ctx = self.upstream.next(context)
+        value, ctx = super(FFilter, self).next(context)
+        while not self.predicate(value):
+            value, ctx = super(FFilter, self).next(context)
         return value, ctx
 
 
@@ -69,9 +83,7 @@ class FTake(Stream):
         self.idx = 0
 
     def next(self, context):
-        value, ctx = self.upstream.next(context)
-        while value is None:
-            value, ctx = self.upstream.next(context)
+        value, ctx = super(FTake, self).next(context)
         self.idx = self.idx + 1
         if self.idx <= self.count:
             return value, ctx
@@ -85,36 +97,41 @@ class FDelay(Stream):
         self.delay = delay
 
     def next(self, context):
-        value, ctx = self.upstream.next(context)
-        while value is None:
-            value, ctx = self.upstream.next(context)
+        value, ctx = super(FDelay, self).next(context)
         time.sleep(self.delay)
         return value, ctx
 
 
 class FLog(Stream):
-    def __init__(self, log, flux):
+    def __init__(self, log, level, flux):
         super().__init__(flux)
+        self.level = level
         self.function_log = log
 
+    def log(self, msg):
+        if self.level is logging.ERROR:
+            logging.error(str(msg))
+        elif self.level is logging.WARNING or self.level is logging.WARN:
+            logging.warning(str(msg))
+        elif self.level is logging.INFO:
+            logging.info(str(msg))
+        elif self.level is logging.DEBUG:
+            logging.debug(str(msg))
+
     def next(self, context):
-        value, ctx = self.upstream.next(context)
-        while value is None:
-            value, ctx = self.upstream.next(context)
-            print(f"{str(self.function_log(value))}", flush=True)
+        value, ctx = super(FLog, self).next(context)
+        self.log(self.function_log(value))
         return value, ctx
 
 
-class FLogContext(Stream):
-    def __init__(self, log, flux):
-        super().__init__(flux)
+class FLogContext(FLog):
+    def __init__(self, log, level, flux):
+        super().__init__(log, level, flux)
         self.function_log = log
 
     def next(self, context):
-        value, ctx = self.upstream.next(context)
-        while value is None:
-            value, ctx = self.upstream.next(context)
-        print(f"{str(self.function_log(ctx))}", flush=True)
+        value, ctx = super(FLogContext, self).next(context)
+        self.log(self.function_log(ctx))
         return value, ctx
 
 
@@ -124,9 +141,7 @@ class FMap(Stream):
         self.function = func
 
     def next(self, context):
-        value, ctx = self.upstream.next(context)
-        while value is None:
-            value, ctx = self.upstream.next(context)
+        value, ctx = super(FLogContext, self).next(context)
         return self.function(value, ctx), ctx
 
 
@@ -136,9 +151,7 @@ class FMapContext(Stream):
         self.function = func
 
     def next(self, context):
-        value, ctx = self.upstream.next(context)
-        while value is None:
-            value, ctx = self.upstream.next(context)
+        value, ctx = super(FLogContext, self).next(context)
         return value, merge(ctx, self.function(value, ctx))
 
 
@@ -149,19 +162,15 @@ class FFlatMap(Stream):
         self.current = None
 
     def next(self, context):
-        ctx = context
-        while True:
-            while self.current is None:
-                value, ctx = self.upstream.next(context)
-                while value is None:
-                    value, ctx = self.upstream.next(context)
-                self.current = self.function(value, ctx).subscribe(ctx)
+        while self.current is None:
+            value, ctx = super(FFlatMap, self).next(context)
+            self.current = self.function().subscribe(ctx)
             try:
                 v = next(self.current)
                 while v is None:
                     v = next(self.current)
                 return v, ctx
-            except StopIteration as si:
+            except StopIteration:
                 self.current = None
 
 
@@ -171,8 +180,6 @@ class FDoOnNext(Stream):
         self.function = func
 
     def next(self, context):
-        value, ctx = self.upstream.next(context)
-        while value is None:
-            value, ctx = self.upstream.next(context)
+        value, ctx = super(FDoOnNext, self).next(context)
         self.function(value, ctx)
         return value, ctx
