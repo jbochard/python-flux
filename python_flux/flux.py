@@ -13,7 +13,8 @@ class Flux(object):
         pass
 
     def __default_error(e):
-        traceback.print_exception(type(e), e, e.__traceback__)
+        if not isinstance(e, StopIteration):
+            traceback.print_exception(type(e), e, e.__traceback__)
 
     def filter(self, predicate):
         return FFilter(predicate, self)
@@ -52,6 +53,9 @@ class Flux(object):
         for _ in SForeach(on_success, on_error, context, self):
             pass
 
+    def to_list(self, context={}):
+        return list(map(lambda v: v[0], iter(SSubscribe(context, self))))
+
 
 class Stream(Flux):
     def __init__(self, up):
@@ -84,7 +88,8 @@ class FFilterWithContext(Stream):
 
     def next(self, context):
         value, ctx = super(FFilterWithContext, self).next(context)
-        while not self.predicate(value, ctx):
+        ctx_bkp = ctx.copy()
+        while not self.predicate(value, ctx_bkp):
             value, ctx = super(FFilterWithContext, self).next(context)
         return value, ctx
 
@@ -144,7 +149,8 @@ class FLogContext(FLog):
 
     def next(self, context):
         value, ctx = super(FLogContext, self).next(context)
-        self.log(self.function_log(ctx))
+        ctx_bkp = ctx.copy()
+        self.log(self.function_log(ctx_bkp))
         return value, ctx
 
 
@@ -155,7 +161,8 @@ class FMap(Stream):
 
     def next(self, context):
         value, ctx = super(FMap, self).next(context)
-        return self.function(value, ctx), ctx
+        ctx_bkp = ctx.copy()
+        return self.function(value, ctx_bkp), ctx
 
 
 class FMapContext(Stream):
@@ -165,7 +172,8 @@ class FMapContext(Stream):
 
     def next(self, context):
         value, ctx = super(FMapContext, self).next(context)
-        return value, merge(ctx, self.function(value, ctx))
+        ctx_bkp = ctx.copy()
+        return value, merge(ctx, self.function(value, ctx_bkp))
 
 
 class FFlatMap(Stream):
@@ -178,12 +186,14 @@ class FFlatMap(Stream):
         ctx = context
         while True:
             while self.current is None:
-                value, ctx = super(FFlatMap, self).next(context)
-                self.current = self.function(value, ctx).subscribe(ctx)
+                value, ctx = super(FFlatMap, self).next(ctx)
+                ctx_bkp = ctx.copy()
+                self.current = self.function(value, ctx_bkp).subscribe(ctx)
             try:
-                v = next(self.current)
+                v, c = next(self.current)
                 while v is None:
-                    v = next(self.current)
+                    v, c = next(self.current)
+                ctx = merge(ctx, c)
                 return v, ctx
             except StopIteration:
                 self.current = None

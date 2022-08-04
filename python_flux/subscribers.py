@@ -15,7 +15,7 @@ class SSubscribe(object):
     def __next__(self):
         value, ctx = self.flux.next(self.context)
         self.context = merge(self.context, ctx)
-        return value
+        return value, self.context
 
 
 class SForeach(SSubscribe):
@@ -26,7 +26,7 @@ class SForeach(SSubscribe):
 
     def __next__(self):
         try:
-            value = super(SForeach, self).__next__()
+            value, ctx = super(SForeach, self).__next__()
             self.on_success(value)
             return value
         except Exception as e:

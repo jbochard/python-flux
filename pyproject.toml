@@ -14,7 +14,7 @@ python = "^3.8"
 jsonmerge = "^1.8"
 
 [tool.poetry.dev-dependencies]
-pytest = "^5.2"
+pytest = "^7.1"
 
 [tool.poetry-dynamic-versioning]
 enable = true
