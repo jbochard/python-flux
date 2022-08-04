@@ -36,11 +36,11 @@ class Flux(object):
     def take(self, n):
         return FTake(n, self)
 
-    def log(self, log=lambda v: str(v)):
-        return FLog(log, self)
+    def log(self, log=lambda v: str(v), level=logging.INFO):
+        return FLog(log, level, self)
 
-    def log_context(self, log=lambda c: str(c)):
-        return FLogContext(log, self)
+    def log_context(self, log=lambda c: str(c), level=logging.INFO):
+        return FLogContext(log, level, self)
 
     def subscribe(self, context={}):
         return SSubscribe(context, self)
