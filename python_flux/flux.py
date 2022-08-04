@@ -15,8 +15,11 @@ class Flux(object):
     def __default_error(e):
         traceback.print_exception(type(e), e, e.__traceback__)
 
-    def filter(self, f):
-        return FFilter(f, self)
+    def filter(self, predicate):
+        return FFilter(predicate, self)
+
+    def filter_with_context(self, predicate_with_context):
+        return FFilterWithContext(predicate_with_context, self)
 
     def map(self, f):
         return FMap(f, self)
@@ -71,6 +74,18 @@ class FFilter(Stream):
         value, ctx = super(FFilter, self).next(context)
         while not self.predicate(value):
             value, ctx = super(FFilter, self).next(context)
+        return value, ctx
+
+
+class FFilterWithContext(Stream):
+    def __init__(self, p, flux):
+        super().__init__(flux)
+        self.predicate = p
+
+    def next(self, context):
+        value, ctx = super(FFilterWithContext, self).next(context)
+        while not self.predicate(value, ctx):
+            value, ctx = super(FFilterWithContext, self).next(context)
         return value, ctx
 
 
