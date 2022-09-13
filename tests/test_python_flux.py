@@ -1,3 +1,5 @@
+import datetime
+
 from python_flux.producers import from_iterator, from_generator
 
 
@@ -39,6 +41,13 @@ def test_flatmap():
 def test_take():
     flux = from_iterator(range(0, 10))\
         .take(3)
+    assert flux.to_list() == [0, 1, 2]
+
+
+def test_take_during_timedelta():
+    flux = from_iterator(range(0, 10))\
+        .delay(1)\
+        .take_during_timedelta(datetime.timedelta(seconds=4))
     assert flux.to_list() == [0, 1, 2]
 
 

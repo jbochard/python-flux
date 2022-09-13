@@ -1,6 +1,8 @@
+import datetime
 import time
 import traceback
 import logging
+from datetime import timedelta
 
 from jsonmerge import merge
 
@@ -39,6 +41,9 @@ class Flux(object):
 
     def take(self, n):
         return FTake(n, self)
+
+    def take_during_timedelta(self, n):
+        return FTakeDuringTimeDelta(n, self)
 
     def log(self, log=lambda v: str(v), level=logging.INFO):
         return FLog(log, level, self)
@@ -104,6 +109,26 @@ class FTake(Stream):
         value, ctx = super(FTake, self).next(context)
         self.idx = self.idx + 1
         if self.idx <= self.count:
+            return value, ctx
+        else:
+            raise StopIteration()
+
+
+class FTakeDuringTimeDelta(Stream):
+    def __init__(self, td, flux):
+        super().__init__(flux)
+        if type(td) == timedelta:
+            self.timedelta = td
+        if type(td) == int or type(td) == float:
+            self.timedelta = datetime.timedelta(seconds=td)
+        self.starttime = None
+
+    def next(self, context):
+        if self.starttime is None:
+            self.starttime = datetime.datetime.utcnow()
+
+        value, ctx = super(FTakeDuringTimeDelta, self).next(context)
+        if self.starttime + self.timedelta >= datetime.datetime.utcnow():
             return value, ctx
         else:
             raise StopIteration()
