@@ -2,10 +2,12 @@ import datetime
 import time
 import traceback
 import logging
+import types
 from datetime import timedelta
 
 from jsonmerge import merge
 
+from python_flux.producers import from_generator
 from python_flux.subscribers import SSubscribe, SForeach
 
 
@@ -213,7 +215,9 @@ class FFlatMap(Stream):
             while self.current is None:
                 value, ctx = super(FFlatMap, self).next(ctx)
                 ctx_bkp = ctx.copy()
-                self.current = self.function(value, ctx_bkp).subscribe(ctx)
+                func = self.function(value, ctx_bkp)
+                fgen = from_generator(func) if isinstance(func, types.GeneratorType) else func
+                self.current = fgen.subscribe(ctx)
             try:
                 v, c = next(self.current)
                 while v is None:
