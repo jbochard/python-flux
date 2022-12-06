@@ -18,7 +18,8 @@ pytest = "^7.1"
 
 [tool.poetry-dynamic-versioning]
 enable = true
-pattern = '(?P<base>\d+\.\d+\.\d+)'
+vcs = "git"
+style = "semver"
 
 [build-system]
 requires = ["poetry>=1.1.0", "poetry-dynamic-versioning"]
