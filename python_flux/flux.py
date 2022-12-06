@@ -7,7 +7,6 @@ from datetime import timedelta
 
 from jsonmerge import merge
 
-from python_flux.producers import from_generator
 from python_flux.subscribers import SSubscribe, SForeach
 
 
@@ -216,7 +215,12 @@ class FFlatMap(Stream):
                 value, ctx = super(FFlatMap, self).next(ctx)
                 ctx_bkp = ctx.copy()
                 func = self.function(value, ctx_bkp)
-                fgen = from_generator(func) if isinstance(func, types.GeneratorType) else func
+
+                if isinstance(func, types.GeneratorType):
+                    from python_flux.producers import PFromGenerator
+                    fgen = PFromGenerator(func)
+                else:
+                    fgen = func
                 self.current = fgen.subscribe(ctx)
             try:
                 v, c = next(self.current)

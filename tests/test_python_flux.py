@@ -38,6 +38,8 @@ def test_flatmap():
     assert flux.to_list() == [0, 3, 1, 4, 2, 5, 3, 6, 4, 7]
 
 
+
+
 def test_take():
     flux = from_iterator(range(0, 10))\
         .take(3)
