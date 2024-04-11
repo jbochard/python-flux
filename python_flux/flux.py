@@ -12,6 +12,12 @@ from python_flux.subscribers import SSubscribe, SForeach
 
 class Flux(object):
 
+    def __default_action_with_context(value, context):
+        pass
+
+    def __default_action(value):
+        pass
+
     def __default_success(value):
         pass
 
@@ -19,11 +25,11 @@ class Flux(object):
         if not isinstance(e, StopIteration):
             traceback.print_exception(type(e), e, e.__traceback__)
 
-    def filter(self, predicate):
-        return FFilter(predicate, self)
+    def filter(self, predicate, on_mismatch=__default_action):
+        return FFilter(predicate, on_mismatch, self)
 
-    def filter_with_context(self, predicate_with_context):
-        return FFilterWithContext(predicate_with_context, self)
+    def filter_with_context(self, predicate_with_context, on_mismatch=__default_action_with_context):
+        return FFilterWithContext(predicate_with_context, on_mismatch, self)
 
     def map(self, f):
         return FMap(f, self)
@@ -76,26 +82,30 @@ class Stream(Flux):
 
 
 class FFilter(Stream):
-    def __init__(self, p, flux):
+    def __init__(self, p, m, flux):
         super().__init__(flux)
         self.predicate = p
+        self.on_mismatch = m
 
     def next(self, context):
         value, ctx = super(FFilter, self).next(context)
         while not self.predicate(value):
+            self.on_mismatch(value)
             value, ctx = super(FFilter, self).next(context)
         return value, ctx
 
 
 class FFilterWithContext(Stream):
-    def __init__(self, p, flux):
+    def __init__(self, p, m, flux):
         super().__init__(flux)
         self.predicate = p
+        self.on_mismatch = m
 
     def next(self, context):
         value, ctx = super(FFilterWithContext, self).next(context)
         ctx_bkp = ctx.copy()
         while not self.predicate(value, ctx_bkp):
+            self.on_mismatch(value, ctx_bkp)
             value, ctx = super(FFilterWithContext, self).next(context)
         return value, ctx
 
