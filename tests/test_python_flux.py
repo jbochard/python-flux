@@ -22,6 +22,11 @@ def test_filter():
     assert flux.to_list() == [0, 2, 4, 6, 8]
 
 
+def test_do_on_next():
+    flux = from_iterator(range(0, 10))\
+        .do_on_next(lambda v, c: print(v))
+    flux.foreach()
+
 def test_map():
     flux = from_iterator(range(0, 10))\
         .map(lambda v, c: v + 1)
@@ -36,8 +41,6 @@ def test_flatmap():
     flux = from_iterator(range(0, 5))\
         .flat_map(tmp)
     assert flux.to_list() == [0, 3, 1, 4, 2, 5, 3, 6, 4, 7]
-
-
 
 
 def test_take():

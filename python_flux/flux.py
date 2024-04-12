@@ -3,20 +3,21 @@ import time
 import traceback
 import logging
 import types
+import asyncio
 from datetime import timedelta
+from functools import partial
 
 from jsonmerge import merge
-
 from python_flux.subscribers import SSubscribe, SForeach
 
 
 class Flux(object):
 
-    def __default_action_with_context(value, context):
+    def __default_action(value, context):
         pass
 
-    def __default_action(value):
-        pass
+    def __default_predicate(value, context):
+        return True
 
     def __default_success(value):
         pass
@@ -27,9 +28,6 @@ class Flux(object):
 
     def filter(self, predicate, on_mismatch=__default_action):
         return FFilter(predicate, on_mismatch, self)
-
-    def filter_with_context(self, predicate_with_context, on_mismatch=__default_action_with_context):
-        return FFilterWithContext(predicate_with_context, on_mismatch, self)
 
     def map(self, f):
         return FMap(f, self)
@@ -46,17 +44,26 @@ class Flux(object):
     def delay(self, d):
         return FDelay(d, self)
 
+    def delay_if_predicate(self, d, c=__default_predicate):
+        return FDelayConditional(d, c, self)
+
     def take(self, n):
         return FTake(n, self)
 
     def take_during_timedelta(self, n):
         return FTakeDuringTimeDelta(n, self)
 
-    def log(self, log=lambda v: str(v), level=logging.INFO):
-        return FLog(log, level, self)
-
-    def log_context(self, log=lambda c: str(c), level=logging.INFO):
-        return FLogContext(log, level, self)
+    def log(self, fmessage=lambda v, c: str(v), level=logging.INFO):
+        def log_function(l, msg, v, c):
+            if l is logging.ERROR:
+                logging.error(msg(v, c))
+            elif l is logging.WARNING or l is logging.WARN:
+                logging.warning(msg(v, c))
+            elif l is logging.INFO:
+                logging.info(msg(v, c))
+            elif l is logging.DEBUG:
+                logging.debug(msg(v, c))
+        return FDoOnNext(partial(log_function, level, fmessage), self)
 
     def subscribe(self, context={}):
         return SSubscribe(context, self)
@@ -90,23 +97,8 @@ class FFilter(Stream):
     def next(self, context):
         value, ctx = super(FFilter, self).next(context)
         while not self.predicate(value):
-            self.on_mismatch(value)
+            self.on_mismatch(value, context)
             value, ctx = super(FFilter, self).next(context)
-        return value, ctx
-
-
-class FFilterWithContext(Stream):
-    def __init__(self, p, m, flux):
-        super().__init__(flux)
-        self.predicate = p
-        self.on_mismatch = m
-
-    def next(self, context):
-        value, ctx = super(FFilterWithContext, self).next(context)
-        ctx_bkp = ctx.copy()
-        while not self.predicate(value, ctx_bkp):
-            self.on_mismatch(value, ctx_bkp)
-            value, ctx = super(FFilterWithContext, self).next(context)
         return value, ctx
 
 
@@ -156,37 +148,16 @@ class FDelay(Stream):
         return value, ctx
 
 
-class FLog(Stream):
-    def __init__(self, log, level, flux):
+class FDelayConditional(Stream):
+    def __init__(self, delay, predicate, flux):
         super().__init__(flux)
-        self.level = level
-        self.function_log = log
-
-    def log(self, msg):
-        if self.level is logging.ERROR:
-            logging.error(str(msg))
-        elif self.level is logging.WARNING or self.level is logging.WARN:
-            logging.warning(str(msg))
-        elif self.level is logging.INFO:
-            logging.info(str(msg))
-        elif self.level is logging.DEBUG:
-            logging.debug(str(msg))
+        self.delay = delay
+        self.predicate = predicate
 
     def next(self, context):
-        value, ctx = super(FLog, self).next(context)
-        self.log(self.function_log(value))
-        return value, ctx
-
-
-class FLogContext(FLog):
-    def __init__(self, log, level, flux):
-        super().__init__(log, level, flux)
-        self.function_log = log
-
-    def next(self, context):
-        value, ctx = super(FLogContext, self).next(context)
-        ctx_bkp = ctx.copy()
-        self.log(self.function_log(ctx_bkp))
+        value, ctx = super(FDelayConditional, self).next(context)
+        if self.predicate(value):
+            time.sleep(self.delay)
         return value, ctx
 
 
@@ -243,11 +214,14 @@ class FFlatMap(Stream):
 
 
 class FDoOnNext(Stream):
+    async def __async_coroutine(self, f, value, context):
+        f(value, context)
+
     def __init__(self, func, flux):
         super().__init__(flux)
         self.function = func
 
     def next(self, context):
         value, ctx = super(FDoOnNext, self).next(context)
-        self.function(value, ctx)
+        asyncio.run(self.__async_coroutine(self.function, value, ctx))
         return value, ctx
