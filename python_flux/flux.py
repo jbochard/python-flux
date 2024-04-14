@@ -45,9 +45,9 @@ class Flux(object):
 
     def flat_map(self, flatmap_function):
         """
-        Permite modificar el valor de un flujo por lo elementos de otro flujo.
-        Recibe una función(valor, contexto) que se evaluará para cada elemento del flujo y retornará un flujo
-        cuyos elementos se usarán como nuevo flujo de datos.
+        Permite sustituir el valor de un flujo por elementos de otro flujo.
+        Recibe una función(valor, contexto) que se evaluará para cada elemento del flujo original y retornará un
+        flujo cuyos elementos se usarán como nuevo origen del flujo de datos.
 
         flatmap_function: función(valor, contexto) desde donde se obtendrá el valor a subsituir.
         """
@@ -320,6 +320,12 @@ class FFlatMap(Stream):
         self.function = func
         self.current = None
 
+    def prepare_next(self):
+        if self.current is None:
+            super(FFlatMap, self).prepare_next()
+        else:
+            self.current.prepare_next()
+
     def next(self, context):
         ctx = context.copy()
         while True:
@@ -330,19 +336,20 @@ class FFlatMap(Stream):
                 func, e = fu.try_or(partial(self.function), value, ctx)
                 if e is not None:
                     return None, e, ctx
+                fgen = func
                 if isinstance(func, types.GeneratorType):
                     from python_flux.producers import PFromGenerator
                     fgen = PFromGenerator(func)
-                else:
-                    fgen = func
-                self.current = fgen.subscribe(ctx)
-            try:
-                v = next(self.current)
-                return v, None, ctx
-            except StopIteration:
+                self.current = fgen
+                self.current.prepare_next()
+
+            cur_value, cur_e, cur_ctx = self.current.next(ctx)
+            if cur_e is None:
+                return cur_value, cur_e, cur_ctx
+
+            if isinstance(cur_e, StopIteration):
                 self.current = None
-            except Exception as ex:
-                return None, ex, ctx
+                super(FFlatMap, self).prepare_next()
 
 
 class FOnErrorResume(Stream):
