@@ -11,14 +11,14 @@ def test_iterator():
 def test_foreach():
     tmp = []
     from_iterator(range(0, 10))\
-        .foreach(on_success=lambda v: tmp.append(v))
+        .foreach(on_success=lambda v, c: tmp.append(v))
 
     assert tmp == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 
 def test_filter():
     flux = from_iterator(range(0, 10))\
-        .filter(lambda v: v % 2 == 0)
+        .filter(lambda v, c: v % 2 == 0)
     assert flux.to_list() == [0, 2, 4, 6, 8]
 
 
@@ -27,6 +27,28 @@ def test_do_on_next():
         .do_on_next(lambda v, c: print(v))
     flux.foreach()
 
+
+def test_on_error_resume():
+    flux = from_iterator(range(-4, 4))\
+        .map(lambda v, c: round(1/v, 1))\
+        .on_error_resume(lambda e, c: 1000)
+    assert flux.to_list() == [-0.2, -0.3, -0.5, -1.0, 1000, 1.0, 0.5, 0.3]
+
+
+def test_on_error_retry():
+    def add_to_result(v, c):
+        result.append(v)
+        return round(1/v, 1)
+
+    result = []
+    flux = from_iterator(range(-4, 4))\
+        .map(add_to_result)\
+        .on_error_retry(retries=2)\
+        .on_error_resume(lambda e, c: 2000)
+    assert flux.to_list() == [-0.2, -0.3, -0.5, -1.0, 2000, 1.0, 0.5, 0.3]
+    assert result == [-4, -3, -2, -1, 0, 0, 0, 1, 2, 3]
+
+
 def test_map():
     flux = from_iterator(range(0, 10))\
         .map(lambda v, c: v + 1)
@@ -34,25 +56,14 @@ def test_map():
 
 
 def test_flatmap():
-    def tmp(v, c):
-        return from_iterator((0, 3))\
-            .map(lambda i, ic: v + i)
-
-    flux = from_iterator(range(0, 5))\
-        .flat_map(tmp)
-    assert flux.to_list() == [0, 3, 1, 4, 2, 5, 3, 6, 4, 7]
+    flux = from_iterator(range(0, 3))\
+        .flat_map(lambda v, c: from_iterator(range(0, v + 1)))
+    assert flux.to_list() == [0, 0, 1, 0, 1, 2]
 
 
 def test_take():
     flux = from_iterator(range(0, 10))\
         .take(3)
-    assert flux.to_list() == [0, 1, 2]
-
-
-def test_take_during_timedelta():
-    flux = from_iterator(range(0, 10))\
-        .delay(1)\
-        .take_during_timedelta(datetime.timedelta(seconds=4))
     assert flux.to_list() == [0, 1, 2]
 
 

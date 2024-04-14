@@ -1,4 +1,7 @@
+from functools import partial
+
 from jsonmerge import merge
+from python_flux.flux_utilis import FluxUtils as fu
 
 
 class SSubscribe(object):
@@ -13,9 +16,12 @@ class SSubscribe(object):
         return self
 
     def __next__(self):
-        value, ctx = self.flux.next(self.context)
+        self.flux.prepare_next()
+        value, e, ctx = self.flux.next(self.context)
+        if e is not None:
+            raise e
         self.context = merge(self.context, ctx)
-        return value, self.context
+        return value
 
 
 class SForeach(SSubscribe):
@@ -25,10 +31,14 @@ class SForeach(SSubscribe):
         self.on_error = on_error
 
     def __next__(self):
-        try:
-            value, ctx = super(SForeach, self).__next__()
-            self.on_success(value)
+        while True:
+            self.flux.prepare_next()
+            value, e, ctx = self.flux.next(self.context)
+            if e is not None and isinstance(e, StopIteration):
+                raise e
+            elif e is not None:
+                fu.try_or(partial(self.on_error), e, ctx)
+            else:
+                fu.try_or(partial(self.on_success), value, ctx)
+            self.context = merge(self.context, ctx)
             return value
-        except Exception as e:
-            self.on_error(e)
-            raise e
