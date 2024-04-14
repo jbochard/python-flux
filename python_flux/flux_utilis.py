@@ -20,8 +20,8 @@ class FluxUtils:
 
     @staticmethod
     def default_error(e, context):
-        if not isinstance(e, StopIteration):
-            traceback.print_exception(type(e), e, e.__traceback__)
+        traceback.print_exception(type(e), e, e.__traceback__)
+        raise e
 
     @staticmethod
     def try_or(statement, value, ctx) -> (object, Exception):

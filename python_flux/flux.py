@@ -18,8 +18,8 @@ class Flux(object):
         Si no se cumple el predicado opcionalmente se puede indicar una función que dado el valor y el contexto acutal
         retorna el valor que se enviará al flujo.
 
-        :param predicte: función(valor, contexto) que retorna un booleano
-        :param on_mismath: función(valor, contexto) que retorna un valor alternativo al testeado originalmente
+        :param predicate: función(valor, contexto) que retorna un booleano
+        :param on_mismatch: función(valor, contexto) que retorna un valor alternativo al testeado originalmente
         """
         return FFilter(predicate, on_mismatch, self)
 
@@ -149,11 +149,21 @@ class Flux(object):
         Itera sobre los elementos del flujo e invoca a funciones on_success y on_error dependiendo
         el estado del flujo.
         :param on_success: función(valor, contexto) se invoca si el flujo procesa correctamente un valor
-        :param on_error:  función(ex, contexto) se invoca si hay un error en el flujo. Esto no corta el procesamiento
+        :param on_error:  función(ex, contexto) se invoca si hay un error en el flujo.
+                          Esto no corta el procesamiento a menos que se lance una excepción en el método
         :param context: Contexto inicial para el flujo
         """
-        for _ in SForeach(on_success, on_error, context, self):
-            pass
+        flux = self.subscribe(context)
+        while True:
+            try:
+                value = next(flux)
+                fu.try_or(partial(on_success), value, context)
+            except StopIteration:
+                return
+            except Exception as ex:
+                _, e = fu.try_or(partial(on_error), ex, context)
+                if e is not None:
+                    raise e
 
     def to_list(self, context={}):
         """
@@ -174,9 +184,15 @@ class Flux(object):
         :return: Acumulador
         """
         acum = init(context)
-        for v in SSubscribe(context, self):
-            acum = reduce(v, acum)
-        return acum
+        flux = self.subscribe(context)
+        while True:
+            try:
+                value = next(flux)
+                acum = reduce(value, acum)
+            except StopIteration:
+                return
+            except Exception as ex:
+                raise ex
 
 
 class Stream(Flux):
@@ -205,6 +221,8 @@ class FFilter(Stream):
         valid, e = fu.try_or(partial(self.predicate), value, context)
         while e is None and not valid:
             _, e = fu.try_or(partial(self.on_mismatch), value, context)
+            if e is not None:
+                return value, e, ctx
             super(FFilter, self).prepare_next()
             value, e, ctx = super(FFilter, self).next(context)
             if e is not None:
@@ -257,28 +275,12 @@ class FDelayMs(Stream):
     def next(self, context):
         value, e, ctx = super(FDelayMs, self).next(context)
         if e is not None:
-            return None, e, ctx
+            return value, e, ctx
         valid, e = fu.try_or(partial(self.predicate), value, context)
         if e is not None:
             return value, e, ctx
         if valid:
             time.sleep(self.delay / 1000)
-        return value, e, ctx
-
-
-class FDelayConditional(Stream):
-    def __init__(self, delay, predicate, flux):
-        super().__init__(flux)
-        self.delay = delay
-        self.predicate = predicate
-
-    def next(self, context):
-        value, e, ctx = super(FDelayConditional, self).next(context)
-        valid, e = fu.try_or(partial(self.predicate), e, value, context)
-        if e is not None:
-            return value, e, ctx
-
-        time.sleep(self.delay)
         return value, e, ctx
 
 
@@ -290,10 +292,10 @@ class FMap(Stream):
     def next(self, context):
         value, e, ctx = super(FMap, self).next(context)
         if e is not None:
-            return None, e, ctx
+            return value, e, ctx
         mapped_value, e = fu.try_or(partial(self.function), value, ctx.copy())
         if e is not None:
-            return None, e, ctx
+            return value, e, ctx
         return mapped_value, e, ctx
 
 
@@ -305,10 +307,10 @@ class FMapContext(Stream):
     def next(self, context):
         value, e, ctx = super(FMapContext, self).next(context)
         if e is not None:
-            return None, e, ctx
+            return value, e, ctx
         mapped_context, e = fu.try_or(partial(self.function), value, ctx.copy())
         if e is not None:
-            return None, e, ctx
+            return value, e, ctx
         return value, e, merge(ctx, mapped_context)
 
 
@@ -358,7 +360,7 @@ class FOnErrorResume(Stream):
         if any([isinstance(e, ex) for ex in self.exceptions]):
             v, e = fu.try_or(partial(self.on_error_resume), e, ctx)
             if e is not None:
-                return None, e, ctx
+                return value, e, ctx
             value = v
         return value, None, ctx
 

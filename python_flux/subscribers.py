@@ -24,11 +24,12 @@ class SSubscribe(object):
         return value
 
 
-class SForeach(SSubscribe):
+class SForeach(object):
     def __init__(self, on_success, on_error, ctx, f):
-        super(SForeach, self).__init__(ctx, f)
         self.on_success = on_success
         self.on_error = on_error
+        self.context = ctx
+        self.flux = f
 
     def __next__(self):
         while True:
