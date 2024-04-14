@@ -21,11 +21,13 @@ class Producer(Flux):
         return self.value
 
     def next(self, context):
-        if self.value is None:
-            v, e = self._next(context)
-            if e is None:
-                self.value = v
-        return self.value, e, context
+        if self.value is not None:
+            return self.value, None, context
+        v, e = self._next(context)
+        if e is None:
+            self.value = v
+            return self.value, None, context
+        return None, e, context
 
     def _next(self, context):
         return None, None
@@ -44,7 +46,7 @@ class PFromIterator(Producer):
             v = next(self.iterator)
             return v, None
         except Exception as ex:
-            return self.value, ex
+            return None, ex
 
 
 class PFromGenerator(Producer):
@@ -60,4 +62,4 @@ class PFromGenerator(Producer):
             v = next(self.generator)
             return v, None
         except Exception as ex:
-            return self.value, ex
+            return None, ex
