@@ -1,5 +1,5 @@
-import asyncio
 import logging
+import threading
 import types
 import time
 from datetime import timedelta, datetime
@@ -53,15 +53,16 @@ class Flux(object):
         """
         return FFlatMap(flatmap_function, self)
 
-    def do_on_next(self, on_next, on_error=fu.default_action):
+    def do_on_next(self, on_next, on_error=fu.default_action, exec_async=True):
         """
         Ejecuta par cada elemento del flujo una acción de forma asincrónica. No afecta a los valores
         del flujo.
 
         :param on_next: función(valor, contexto) se ejecuta para cada valor del flujo
         :param on_error: función(ex, contexto) se ejecuta en caso de error
+        :param exec_async: Booleano que indica si las funciones se ejecutarán de forma asíncrona
         """
-        return FDoOnNext(on_next, on_error, self)
+        return FDoOnNext(on_next, on_error, exec_async, self)
 
     def delay_ms(self, delay_ms, predicate=fu.default_predicate):
         """
@@ -398,18 +399,25 @@ class FOnErrorRetry(Stream):
 
 
 class FDoOnNext(Stream):
-    async def __async_coroutine(self, f, value, context):
-        f(value, context)
 
-    def __init__(self, on_next, on_error, flux):
+    def __init__(self, on_next, on_error, exec_async, flux):
         super().__init__(flux)
         self.on_next = on_next
         self.on_error = on_error
+        self.execute_async = exec_async
 
     def next(self, context):
         value, e, ctx = super(FDoOnNext, self).next(context)
         if e is not None:
-            asyncio.run(self.__async_coroutine(self.on_error, e, ctx))
+            if self.execute_async:
+                t = threading.Thread(target=self.on_error, args=(e, ctx,))
+                t.start()
+            else:
+                self.on_error(e, ctx)
             return value, e, ctx
-        asyncio.run(self.__async_coroutine(self.on_next, value, ctx))
+        if self.execute_async:
+            t = threading.Thread(target=self.on_next, args=(value, ctx,))
+            t.start()
+        else:
+            self.on_next(value, ctx)
         return value, e, ctx

@@ -56,6 +56,10 @@ No afecta a los valores del flujo.
 
 -  **on_next**: función(valor, contexto) que se ejecutará para cada valor del flujo
 
+-  **on_error**: función(ex, contexto) se ejecuta en caso de error
+
+- **exec_async**: Booleano que indica si las funciones se ejecutarán de forma asíncrona
+
 
 delay_ms(delay_ms, predicate=fu.default_predicate)
 --------------------------------------------------

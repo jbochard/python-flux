@@ -24,7 +24,7 @@ def test_filter():
 
 def test_do_on_next():
     flux = from_iterator(range(0, 10))\
-        .do_on_next(lambda v, c: print(v))
+        .do_on_next(lambda v, c: print(f"Valor: {v}"), lambda e, c: print(f"Error: {type(e)} - {str(e)}"))
     flux.foreach()
 
 
