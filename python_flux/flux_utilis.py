@@ -24,6 +24,10 @@ class FluxUtils:
         raise e
 
     @staticmethod
+    def default_finish(context):
+        pass
+
+    @staticmethod
     def try_or(statement, value, ctx) -> (object, Exception):
         try:
             v = statement(value, ctx)

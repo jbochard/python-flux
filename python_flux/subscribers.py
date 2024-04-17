@@ -25,9 +25,10 @@ class SSubscribe(object):
 
 
 class SForeach(object):
-    def __init__(self, on_success, on_error, ctx, f):
+    def __init__(self, on_success, on_error, on_finish, ctx, f):
         self.on_success = on_success
         self.on_error = on_error
+        self.on_finish = on_finish
         self.context = ctx
         self.flux = f
 
@@ -36,6 +37,7 @@ class SForeach(object):
             self.flux.prepare_next()
             value, e, ctx = self.flux.next(self.context)
             if e is not None and isinstance(e, StopIteration):
+                fu.try_or(partial(self.on_finish), ctx)
                 raise e
             elif e is not None:
                 fu.try_or(partial(self.on_error), e, ctx)

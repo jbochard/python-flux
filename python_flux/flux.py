@@ -53,14 +53,15 @@ class Flux(object):
         """
         return FFlatMap(flatmap_function, self)
 
-    def do_on_next(self, on_next):
+    def do_on_next(self, on_next, on_error=fu.default_action):
         """
         Ejecuta par cada elemento del flujo una acción de forma asincrónica. No afecta a los valores
         del flujo.
 
-        :param on_next: función(valor, contexto) que se ejecutará para cada valor del flujo
+        :param on_next: función(valor, contexto) se ejecuta para cada valor del flujo
+        :param on_error: función(ex, contexto) se ejecuta en caso de error
         """
-        return FDoOnNext(on_next, self)
+        return FDoOnNext(on_next, on_error, self)
 
     def delay_ms(self, delay_ms, predicate=fu.default_predicate):
         """
@@ -144,13 +145,14 @@ class Flux(object):
         """
         return SSubscribe(context, self)
 
-    def foreach(self, on_success=fu.default_success, on_error=fu.default_error, context={}):
+    def foreach(self, on_success=fu.default_success, on_error=fu.default_error, on_finish=fu.default_finish, context={}):
         """
         Itera sobre los elementos del flujo e invoca a funciones on_success y on_error dependiendo
         el estado del flujo.
         :param on_success: función(valor, contexto) se invoca si el flujo procesa correctamente un valor
         :param on_error:  función(ex, contexto) se invoca si hay un error en el flujo.
                           Esto no corta el procesamiento a menos que se lance una excepción en el método
+        :param on_finish: función(contexto) se invoca al finalizar el flujo
         :param context: Contexto inicial para el flujo
         """
         flux = self.subscribe(context)
@@ -399,13 +401,15 @@ class FDoOnNext(Stream):
     async def __async_coroutine(self, f, value, context):
         f(value, context)
 
-    def __init__(self, func, flux):
+    def __init__(self, on_next, on_error, flux):
         super().__init__(flux)
-        self.function = func
+        self.on_next = on_next
+        self.on_error = on_error
 
     def next(self, context):
         value, e, ctx = super(FDoOnNext, self).next(context)
         if e is not None:
+            asyncio.run(self.__async_coroutine(self.on_error, e, ctx))
             return value, e, ctx
-        asyncio.run(self.__async_coroutine(self.function, value, ctx))
+        asyncio.run(self.__async_coroutine(self.on_next, value, ctx))
         return value, e, ctx

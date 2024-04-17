@@ -140,6 +140,8 @@ Itera sobre los elementos del flujo e invoca a funciones **on_success** y on_err
 
 -  **on_error**: función(ex, contexto) se invoca si hay un error en el flujo. Esto no corta el procesamiento a menos que se lance una excepción en el método
 
+-  **on_finish**: función(contexto) se invoca cuando el flujo finaliza
+
 -  **context**: Contexto inicial para el flujo
 
 
