@@ -6,7 +6,7 @@ from datetime import timedelta, datetime
 from functools import partial
 from jsonmerge import merge
 from python_flux.flux_utilis import FluxUtils as fu
-from python_flux.subscribers import SSubscribe, SForeach
+from python_flux.subscribers import SSubscribe
 
 
 class Flux(object):
@@ -92,26 +92,30 @@ class Flux(object):
         """
         return FTakeDuringTimeDelta(n, self)
 
-    def log(self, message=lambda v, c: str(v), level=logging.INFO):
+    def log(self, build_log_message=lambda v, c: str(v), build_error_message=lambda e, c: str(v), level=logging.INFO):
         """
         Recibe una función(valor, contexto) que retorna un mensaje de texto que será logueado con el
         nivel de log indicado en level.
         El logueo se hace de forma asincrónica y no afecta al flujo.
 
-        :param message: Función que dado un valor y contexto retorna un mensaje a loguear.
+        :param build_log_message: Función que dado un valor y contexto retorna un mensaje a loguear
+        :param build_error_message: Función que dada una excepción y el contexto retorna el mensaje a loguear como ERROR
         :param level: Nivel de logueo que se usará
         """
         def log_function(l, msg, v, c):
-            if l is logging.ERROR:
-                logging.error(msg(v, c))
-            elif l is logging.WARNING or l is logging.WARN:
-                logging.warning(msg(v, c))
+            message = msg(v, c)
+            if l is logging.WARNING or l is logging.WARN:
+                logging.warning(message)
             elif l is logging.INFO:
-                logging.info(msg(v, c))
+                logging.info(message)
             elif l is logging.DEBUG:
-                logging.debug(msg(v, c))
+                logging.debug(message)
 
-        return FDoOnNext(partial(log_function, level, message), self)
+        def log_error(msg, e, c):
+            message = msg(e, c)
+            logging.error(message)
+
+        return FDoOnNext(partial(log_function, level, build_log_message), partial(log_error, build_error_message), True, self)
 
     def on_error_resume(self, resume=fu.default_error_resume, exceptions=[Exception]):
         """
@@ -137,14 +141,15 @@ class Flux(object):
         """
         return FOnErrorRetry(retries, exceptions, delay_ms, self)
 
-    def subscribe(self, context={}):
+    def subscribe(self, context={}, skip_error=False):
         """
         Crea un objeto iterable a partir del flujo. Si se itera sobre este objeto se obtendrán
         los valores del flujo.
+        :param skip_error: Ignora errores al obtener los valores desde el flujo
         :param context: Contexto inicial para el flujo
         :return: Objeto iterable
         """
-        return SSubscribe(context, self)
+        return SSubscribe(skip_error, context, self)
 
     def foreach(self, on_success=fu.default_success, on_error=fu.default_error, on_finish=fu.default_finish, context={}):
         """
@@ -156,17 +161,16 @@ class Flux(object):
         :param on_finish: función(contexto) se invoca al finalizar el flujo
         :param context: Contexto inicial para el flujo
         """
-        flux = self.subscribe(context)
+        flux = self.subscribe(context, True)
         while True:
             try:
                 value = next(flux)
                 fu.try_or(partial(on_success), value, context)
             except StopIteration:
+                fu.try_or(partial(on_finish), context)
                 return
             except Exception as ex:
                 _, e = fu.try_or(partial(on_error), ex, context)
-                if e is not None:
-                    raise e
 
     def to_list(self, context={}):
         """
@@ -174,11 +178,11 @@ class Flux(object):
         :param context: contexto inicial para el flujo
         :return: Lista de elementos
         """
-        return list(iter(SSubscribe(context, self)))
+        return list(iter(SSubscribe(True, context, self)))
 
     def collect(self, init=lambda c: {}, reduce=lambda v, a: a, context={}):
         """
-        Permite resumir en un sólo objeto el procesamiento de todos los elementos del flujo.
+        Permite agrupar en un sólo objeto el resultado del procesamiento de todos los elementos del flujo.
         Se inicializa un acumulador a través de la función init(contexto) y luego para cada elemento del flujo
         se invoca la función reduce(valor, acumulador) que procesa el valor y retorna un nuevo valor del acumulador.
         :param init: función(contexto) Retorna valor inicial del acumulador
@@ -187,7 +191,7 @@ class Flux(object):
         :return: Acumulador
         """
         acum = init(context)
-        flux = self.subscribe(context)
+        flux = self.subscribe(False, context)
         while True:
             try:
                 value = next(flux)
@@ -368,7 +372,7 @@ class FOnErrorResume(Stream):
         if isinstance(e, StopIteration):
             return None, e, ctx
         if any([isinstance(e, ex) for ex in self.exceptions]):
-            v, e = fu.try_or(partial(self.on_error_resume), e, ctx)
+            v, e = fu.try_or(partial(self.on_error_resume), e, value, ctx)
             if e is not None:
                 return value, e, ctx
             value = v

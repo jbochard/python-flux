@@ -28,8 +28,8 @@ Recibe una función(valor, contexto) que se evaluará para cada elemento del flu
 -  **map_function**: función(valor, contexto) desde donde se obtendrá el valor a sustituir.
 
 
-map_context(map_context_function):
-----------------------------------
+map_context(map_context_function)
+---------------------------------
 
 Permite modificar el contexto de un flujo.
 
@@ -89,14 +89,16 @@ La ejecución se cortará si al momento de evaluar este paso el tiempo transcurr
 -  **n**: Cantidad de segundos que el stream procesa elementos.
 
 
-log(message=lambda v, c: str(v), level=logging.INFO)
-----------------------------------------------------
+log(build_log_message, build_error_message, level)
+--------------------------------------------------
 
 Recibe una función(valor, contexto) que retorna un mensaje de texto que será logueado con el nivel de log indicado en level.
 
 El logueo se hace de forma asincrónica y no afecta al flujo.
 
--  **message**: Función que dado un valor y contexto retorna un mensaje a loguear.
+-  **build_log_message**: Función que dado un valor y contexto retorna un mensaje a loguear
+
+-  **build_error_message**: Función que dada una excepción y el contexto retorna el mensaje a loguear como ERROR
 
 -  **level**: Nivel de logueo que se usará
 
@@ -113,8 +115,7 @@ En caso de error, este paso ejecuta la función resume que debe retornar un valo
 on_error_retry(retries=3, delay_ms=lambda i: 0, exceptions=[Exception])
 -----------------------------------------------------------------------
 
-En caso de error, este paso intenta ejecutar nuevamente el flujo
-**retries** cantidad de veces.
+En caso de error, este paso intenta ejecutar nuevamente el flujo **retries** cantidad de veces.
 
 Esto lo hace sólo para las excepciones indicadas por **exceptions** y los reintentos tienen un delay dado por la función **delay_ms** que recibe el número de reintento que es y espera obtener los ms de delay que se deben aplicar.
 
@@ -125,10 +126,12 @@ Esto lo hace sólo para las excepciones indicadas por **exceptions** y los reint
 -  **exceptions**: Lista de excepciones para los que se aplica el método resume.
 
 
-subscribe(context={})
----------------------
+subscribe(skip_error, context)
+------------------------------
 
 Crea un objeto iterable a partir del flujo. Si se itera sobre este objeto se obtendrán los valores del flujo.
+
+-  **skip_error**: Ignora errores al obtener los valores desde el flujo
 
 -  **context**: Contexto inicial para el flujo
 

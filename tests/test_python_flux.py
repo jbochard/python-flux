@@ -31,7 +31,7 @@ def test_do_on_next():
 def test_on_error_resume():
     flux = from_iterator(range(-4, 4))\
         .map(lambda v, c: round(1/v, 1))\
-        .on_error_resume(lambda e, c: 1000)
+        .on_error_resume(lambda e, v, c: 1000)
     assert flux.to_list() == [-0.2, -0.3, -0.5, -1.0, 1000, 1.0, 0.5, 0.3]
 
 
@@ -44,7 +44,7 @@ def test_on_error_retry():
     flux = from_iterator(range(-4, 4))\
         .map(add_to_result)\
         .on_error_retry(retries=2)\
-        .on_error_resume(lambda e, c: 2000)
+        .on_error_resume(lambda e, v, c: 2000)
     assert flux.to_list() == [-0.2, -0.3, -0.5, -1.0, 2000, 1.0, 0.5, 0.3]
     assert result == [-4, -3, -2, -1, 0, 0, 0, 1, 2, 3]
 

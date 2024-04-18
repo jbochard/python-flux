@@ -28,9 +28,9 @@ class FluxUtils:
         pass
 
     @staticmethod
-    def try_or(statement, value, ctx) -> (object, Exception):
+    def try_or(statement, *args) -> (object, Exception):
         try:
-            v = statement(value, ctx)
+            v = statement(*args)
             return v, None
         except Exception as ex:
             return None, ex
