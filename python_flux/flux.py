@@ -226,16 +226,18 @@ class FFilter(Stream):
         value, e, ctx = super(FFilter, self).next(context)
         if e is not None:
             return value, e, ctx
+
         valid, e = fu.try_or(partial(self.predicate), value, context)
         while e is None and not valid:
             _, e = fu.try_or(partial(self.on_mismatch), value, context)
             if e is not None:
                 return value, e, ctx
             super(FFilter, self).prepare_next()
-            value, e, ctx = super(FFilter, self).next(context)
+            value, e, new_ctx = super(FFilter, self).next(ctx)
             if e is not None:
                 return value, e, ctx
-            valid, e = fu.try_or(partial(self.predicate), value, context)
+            ctx = merge(ctx, new_ctx)
+            valid, e = fu.try_or(partial(self.predicate), value, ctx)
         return value, e, ctx
 
 
@@ -354,10 +356,10 @@ class FFlatMap(Stream):
             cur_value, cur_e, cur_ctx = self.current.next(ctx)
             if cur_e is None:
                 return cur_value, cur_e, cur_ctx
-
             if isinstance(cur_e, StopIteration):
                 self.current = None
                 super(FFlatMap, self).prepare_next()
+            ctx = merge(ctx, cur_ctx)
 
 
 class FOnErrorResume(Stream):

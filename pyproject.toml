@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "python-flux"
-version = "1.0.8"
+version = "1.0.9"
 description = "Librería que utiliza generadores de python para simular procesamiento de flujo de datos"
 authors = ["Juan Pablo Bochard <jbochard@gmail.com>"]
 license = "GPL-3.0-or-later"
