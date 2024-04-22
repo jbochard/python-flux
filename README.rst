@@ -126,7 +126,7 @@ Esto lo hace sólo para las excepciones indicadas por **exceptions** y los reint
 -  **exceptions**: Lista de excepciones para los que se aplica el método resume.
 
 
-subscribe(skip_error, context)
+subscribe(context, skip_error)
 ------------------------------
 
 Crea un objeto iterable a partir del flujo. Si se itera sobre este objeto se obtendrán los valores del flujo.
@@ -145,19 +145,21 @@ Itera sobre los elementos del flujo e invoca a funciones **on_success** y on_err
 
 -  **on_success**: función(valor, contexto) se invoca si el flujo procesa correctamente un valor
 
--  **on_error**: función(ex, contexto) se invoca si hay un error en el flujo. Esto no corta el procesamiento a menos que se lance una excepción en el método
+-  **on_error**: función(ex, valor, contexto) se invoca si hay un error en el flujo. Esto no corta el procesamiento a menos que se lance una excepción en el método
 
 -  **on_finish**: función(contexto) se invoca cuando el flujo finaliza
 
 -  **context**: Contexto inicial para el flujo
 
 
-to_list(context={})
--------------------
+to_list(context={}, skip_error=True)
+------------------------------------
 
 Itera sobre los elementos del flujo y los retorna todos dentro de una lista.
 
 -  **context**: contexto inicial para el flujo
+
+-  **skip_error**: Ignora errores al obtener los valores desde el flujo
 
 -  **return**: Lista de elementos
 

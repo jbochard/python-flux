@@ -6,6 +6,7 @@ class FluxUtils:
     @staticmethod
     def default_error_resume(value, ex, context):
         raise value
+
     @staticmethod
     def default_action(value, context):
         pass

@@ -156,7 +156,7 @@ class Flux(object):
         Itera sobre los elementos del flujo e invoca a funciones on_success y on_error dependiendo
         el estado del flujo.
         :param on_success: función(valor, contexto) se invoca si el flujo procesa correctamente un valor
-        :param on_error:  función(ex, contexto) se invoca si hay un error en el flujo.
+        :param on_error:  función(ex, valor, contexto) se invoca si hay un error en el flujo.
                           Esto no corta el procesamiento a menos que se lance una excepción en el método
         :param on_finish: función(contexto) se invoca al finalizar el flujo
         :param context: Contexto inicial para el flujo
@@ -170,15 +170,16 @@ class Flux(object):
                 fu.try_or(partial(on_finish), context)
                 return
             except Exception as ex:
-                _, e = fu.try_or(partial(on_error), ex, context)
+                _, e = fu.try_or(partial(on_error), ex, value, context)
 
-    def to_list(self, context={}):
+    def to_list(self, context={}, skip_error=True):
         """
         Itera sobre los elementos del flujo y los retorna todos dentro de una lista.
         :param context: contexto inicial para el flujo
+        :param skip_error: Ignora errores al obtener los valores desde el flujo
         :return: Lista de elementos
         """
-        return list(iter(SSubscribe(True, context, self)))
+        return list(iter(self.subscribe(context, skip_error)))
 
     def collect(self, init=lambda c: {}, reduce=lambda v, a: a, context={}):
         """
@@ -191,7 +192,7 @@ class Flux(object):
         :return: Acumulador
         """
         acum = init(context)
-        flux = self.subscribe(False, context)
+        flux = self.subscribe(context, False)
         while True:
             try:
                 value = next(flux)
