@@ -28,6 +28,15 @@ Recibe una función(valor, contexto) que se evaluará para cada elemento del flu
 -  **map_function**: función(valor, contexto) desde donde se obtendrá el valor a sustituir.
 
 
+map_if(predicate, map_function)
+-------------------------------
+Evalúa el predicado, si este es verdadero mapea el valor actual con la función de mapeo.
+
+- **predicate**: función(valor, contexto) predicado que se evalúa.
+
+- **map_function**: función(valor, contexto) desde donde se obtendrá el valor a subsituir.
+
+
 map_context(map_context_function)
 ---------------------------------
 
@@ -87,6 +96,15 @@ Corta la ejecución del flujo luego de n segundos de procesamiento.
 La ejecución se cortará si al momento de evaluar este paso el tiempo transcurrido fue superior al configurado.
 
 -  **n**: Cantidad de segundos que el stream procesa elementos.
+
+chunks(n)
+---------
+
+Emite un valor construido como una lista de como máximo n valores obtenidos del flujo padre.
+
+Si algún valor mientras se construye el chunk da error se emiten los elementos recolectados y luego se propaga el error.
+
+- ***n***: Cantidad de elementos recolectados antes de emitir el evento de lista.
 
 
 log(build_log_message, build_error_message, level)

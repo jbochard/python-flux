@@ -33,6 +33,15 @@ class Flux(object):
         """
         return FMap(map_function, self)
 
+    def map_if(self, predicate, map_function):
+        """
+        Evalúa el predicado, si este es verdadero mapea el valor actual utilizando la función de mapeo.
+        
+        :param predicate: función(valor, contexto) predicado que se evalúa.
+        :param map_function: función(valor, contexto) desde donde se obtendrá el valor a subsituir.
+        """
+        return FMapIf(predicate, map_function, self)
+
     def map_context(self, map_context_function):
         """
         Permite modificar el contexto de un flujo.
@@ -74,6 +83,16 @@ class Flux(object):
         """
         return FDelayMs(delay_ms, predicate, self)
 
+    def chunks(self, n):
+        """
+        Emite un valor construido como una lista de como máximo n valores obtenidos del flujo padre.
+        Si algún valor mientras se construye el chunk da error se emiten los elementos recolectados
+        y luego se propaga el error.
+
+        :param n: Cantidad de elementos recolectados antes de emitir el evento de lista.
+        """
+        return FChunks(n, self)
+
     def take(self, n):
         """
         Corta la ejecución del flujo luego de n elementos procesados.
@@ -92,7 +111,7 @@ class Flux(object):
         """
         return FTakeDuringTimeDelta(n, self)
 
-    def log(self, build_log_message=lambda v, c: str(v), build_error_message=lambda e, c: str(v), level=logging.INFO):
+    def log(self, build_log_message=lambda v, c: str(v), build_error_message=lambda e, c: str(e), level=logging.INFO):
         """
         Recibe una función(valor, contexto) que retorna un mensaje de texto que será logueado con el
         nivel de log indicado en level.
@@ -227,9 +246,9 @@ class FFilter(Stream):
         if e is not None:
             return value, e, ctx
 
-        valid, e = fu.try_or(partial(self.predicate), value, context)
+        valid, e = fu.try_or(partial(self.predicate), value, ctx)
         while e is None and not valid:
-            _, e = fu.try_or(partial(self.on_mismatch), value, context)
+            _, e = fu.try_or(partial(self.on_mismatch), value, ctx)
             if e is not None:
                 return value, e, ctx
             super(FFilter, self).prepare_next()
@@ -239,6 +258,32 @@ class FFilter(Stream):
             ctx = merge(ctx, new_ctx)
             valid, e = fu.try_or(partial(self.predicate), value, ctx)
         return value, e, ctx
+
+
+class FMapIf(Stream):
+    def __init__(self, p, f, flux):
+        super().__init__(flux)
+        self.predicate = p
+        self.function = f
+
+    def next(self, context):
+        value, e, ctx = super(FMapIf, self).next(context)
+        if e is not None:
+            return value, e, ctx
+
+        valid, e = fu.try_or(partial(self.predicate), value, ctx)
+        if e is not None:
+            return value, e, ctx
+
+        if valid:
+            v, e = fu.try_or(partial(self.function), value, ctx)
+            if e is not None:
+                return value, e, ctx
+            return v, e, ctx
+
+        return value, e, ctx
+
+
 
 
 class FTake(Stream):
@@ -276,6 +321,38 @@ class FTakeDuringTimeDelta(Stream):
             return value, StopIteration(), ctx
 
 
+class FChunks(Stream):
+    def __init__(self, count, flux):
+        super().__init__(flux)
+        self.count = count
+        self.buffer = []
+        self.stop_iteration = False
+
+    def prepare_next(self):
+        if not self.stop_iteration:
+            super(FChunks, self).prepare_next()
+
+    def next(self, context):
+        if self.stop_iteration:
+            return self.buffer, StopIteration(), context
+        ctx = context
+        while len(self.buffer) < self.count:
+            value, e, new_ctx = super(FChunks, self).next(ctx)
+            if e is not None:
+                self.stop_iteration = True
+                if len(self.buffer) == 0:
+                    return self.buffer, StopIteration(), ctx
+                buf = self.buffer.copy()
+                self.buffer = []
+                return buf, None, ctx
+            self.buffer.append(value)
+            super(FChunks, self).prepare_next()
+            ctx = merge(ctx, new_ctx)
+        buf = self.buffer.copy()
+        self.buffer = []
+        return buf, None, ctx
+
+
 class FDelayMs(Stream):
     def __init__(self, delay, predicate, flux):
         super().__init__(flux)
@@ -286,7 +363,7 @@ class FDelayMs(Stream):
         value, e, ctx = super(FDelayMs, self).next(context)
         if e is not None:
             return value, e, ctx
-        valid, e = fu.try_or(partial(self.predicate), value, context)
+        valid, e = fu.try_or(partial(self.predicate), value, ctx)
         if e is not None:
             return value, e, ctx
         if valid:

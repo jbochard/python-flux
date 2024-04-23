@@ -55,6 +55,12 @@ def test_map():
     assert flux.to_list() == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 
+def test_map_if():
+    flux = from_iterator(range(0, 10))\
+        .map_if(lambda v, c: v > 6, lambda v, c: -1)
+    assert flux.to_list() == [0, 1, 2, 3, 4, 5, 6, -1, -1, -1]
+
+
 def test_flatmap():
     flux = from_iterator(range(0, 3))\
         .flat_map(lambda v, c: from_iterator(range(0, v + 1)))
@@ -65,6 +71,25 @@ def test_take():
     flux = from_iterator(range(0, 10))\
         .take(3)
     assert flux.to_list() == [0, 1, 2]
+
+
+def test_chunks_impar():
+    flux = from_iterator(range(0, 10))\
+        .chunks(3)
+    assert flux.to_list() == [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9]]
+
+
+def test_chunks_par():
+    flux = from_iterator(range(0, 9))\
+        .chunks(3)
+    assert flux.to_list() == [[0, 1, 2], [3, 4, 5], [6, 7, 8]]
+
+
+def test_chunks_error():
+    flux = from_iterator(range(-5, 5))\
+        .map(lambda v, c: 1 / v)\
+        .chunks(3)
+    assert flux.to_list() == [[-1/5, -1/4, -1/3], [-1/2, -1]]
 
 
 def test_map_context():
@@ -89,9 +114,16 @@ def test_from_generator():
 
 if __name__ == "__main__":
     test_iterator()
-    test_take()
+    test_foreach()
     test_filter()
+    test_do_on_next()
+    test_on_error_resume()
+    test_on_error_retry()
+    test_chunks_error()
+    test_chunks_impar()
+    test_chunks_par()
     test_map()
-    test_map_context()
     test_flatmap()
+    test_take()
+    test_map_context()
     test_from_generator()
