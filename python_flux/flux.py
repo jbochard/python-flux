@@ -392,8 +392,8 @@ class _Register:
         self.value, self.e, self.ctx = next(context)
         prepare_next()
         time.sleep(randint(1, 3))
-        sys.stdout.write(f'get: {self.id} {self.value}\n')
-        sys.stdout.flush()
+        #sys.stdout.write(f'get: {self.id} {self.value}\n')
+        #sys.stdout.flush()
 
 
 class FParallel(Stream):
@@ -423,12 +423,12 @@ class FParallel(Stream):
                     if t.is_alive():
                         continue
                     else:
-                        print(f'pop {i}')
+                        #print(f'pop {i}')
                         self.pool.pop(i)
                         r = self.jobs.pop(i)
                         ctx = merge(ctx, r.ctx)
                         if isinstance(r.e, StopIteration):
-                            print('StopIteration')
+                            #print('StopIteration')
                             self.waiting_to_stop = True
                             if len(self.pool) == 0:
                                 return None, StopIteration(), ctx
@@ -437,7 +437,7 @@ class FParallel(Stream):
                         if self.waiting_to_stop:
                             if len(self.pool) == 0:
                                 return None, StopIteration(), ctx
-                        print(f'Return {i} {r.value}')
+                        #print(f'Return {i} {r.value}')
                         return r.value, r.e, ctx
                 except Exception as e:
                     print(str(e))
