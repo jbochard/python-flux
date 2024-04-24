@@ -28,6 +28,14 @@ def test_do_on_next():
     flux.foreach()
 
 
+def test_parallel():
+    res = from_iterator(range(0, 10))\
+        .parallel(5)\
+        .to_list()
+    print(res)
+    assert len(res) == 10
+
+
 def test_on_error_resume():
     flux = from_iterator(range(-4, 4))\
         .map(lambda v, c: round(1/v, 1))\

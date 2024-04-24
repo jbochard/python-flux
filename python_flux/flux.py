@@ -1,4 +1,5 @@
 import logging
+import sys
 import threading
 import types
 import time
@@ -7,7 +8,7 @@ from functools import partial
 from jsonmerge import merge
 from python_flux.flux_utilis import FluxUtils as fu
 from python_flux.subscribers import SSubscribe
-
+from concurrent.futures.thread import ThreadPoolExecutor
 
 class Flux(object):
 
@@ -36,7 +37,7 @@ class Flux(object):
     def map_if(self, predicate, map_function):
         """
         Evalúa el predicado, si este es verdadero mapea el valor actual utilizando la función de mapeo.
-        
+
         :param predicate: función(valor, contexto) predicado que se evalúa.
         :param map_function: función(valor, contexto) desde donde se obtendrá el valor a subsituir.
         """
@@ -136,6 +137,14 @@ class Flux(object):
 
         return FDoOnNext(partial(log_function, level, build_log_message), partial(log_error, build_error_message), True, self)
 
+    def parallel(self, pool_size=5):
+        """
+        Ejecuta la obtención de elementos del stream en paralelo
+
+        :param pool_size: Pool de hilos a utilizar
+        """
+        return FParallel(pool_size, self)
+
     def on_error_resume(self, resume=fu.default_error_resume, exceptions=[Exception]):
         """
         En caso de error, este paso ejecuta la función resume que debe retornar un valor
@@ -231,7 +240,9 @@ class Stream(Flux):
         self.upstream.prepare_next()
 
     def next(self, context):
+        t = time.process_time()
         value, e, ctx = self.upstream.next(context)
+        elapsed_time = time.process_time() - t
         return value, e, ctx
 
 
@@ -282,8 +293,6 @@ class FMapIf(Stream):
             return v, e, ctx
 
         return value, e, ctx
-
-
 
 
 class FTake(Stream):
@@ -369,6 +378,70 @@ class FDelayMs(Stream):
         if valid:
             time.sleep(self.delay / 1000)
         return value, e, ctx
+
+from random import randint
+class _Register:
+
+    def __init__(self, id):
+        self.id = id
+        self.value = None
+        self.e = None
+        self.ctx = None
+
+    def execute(self, prepare_next, next, context):
+        self.value, self.e, self.ctx = next(context)
+        prepare_next()
+        time.sleep(randint(1, 3))
+        sys.stdout.write(f'get: {self.id} {self.value}\n')
+        sys.stdout.flush()
+
+
+class FParallel(Stream):
+    def __init__(self, pool, flux):
+        super().__init__(flux)
+        self.pool_size = pool
+        self.jobs = {}
+        self.pool = {}
+        self.ids = 0
+        self.waiting_to_stop = False
+
+    def next(self, context):
+        ctx = context
+        while True:
+            if not self.waiting_to_stop:
+                if len(self.pool) < self.pool_size:
+                    reg = _Register(self.ids)
+                    t = threading.Thread(target=reg.execute, args=[super(FParallel, self).prepare_next, super(FParallel, self).next, context])
+                    self.jobs[self.ids] = reg
+                    self.pool[self.ids] = t
+                    self.ids = self.ids + 1
+                    t.start()
+            jobs = self.pool.copy()
+            for i, t in jobs.items():
+                try:
+                    t.join(0.001)
+                    if t.is_alive():
+                        continue
+                    else:
+                        print(f'pop {i}')
+                        self.pool.pop(i)
+                        r = self.jobs.pop(i)
+                        ctx = merge(ctx, r.ctx)
+                        if isinstance(r.e, StopIteration):
+                            print('StopIteration')
+                            self.waiting_to_stop = True
+                            if len(self.pool) == 0:
+                                return None, StopIteration(), ctx
+                            else:
+                                continue
+                        if self.waiting_to_stop:
+                            if len(self.pool) == 0:
+                                return None, StopIteration(), ctx
+                        print(f'Return {i} {r.value}')
+                        return r.value, r.e, ctx
+                except Exception as e:
+                    print(str(e))
+                    return None, e, ctx
 
 
 class FMap(Stream):
