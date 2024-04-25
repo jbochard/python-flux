@@ -1,6 +1,5 @@
 import logging
 import threading
-import traceback
 import types
 import time
 from datetime import timedelta, datetime
@@ -94,13 +93,14 @@ class Flux(object):
         """
         return FChunks(n, self)
 
-    def take(self, n):
+    def take(self, n, predicate=None):
         """
         Corta la ejecución del flujo luego de n elementos procesados.
 
         :param n: Cantidad de elementos procesados antes de cortar el flujo
+        :param predicate: función(value, context) Si esta función retorna verdadero ese elemento es tomado en cuenta
         """
-        return FTake(n, self)
+        return FTake(n, predicate, self)
 
     def take_until_seconds(self, n):
         """
@@ -295,14 +295,24 @@ class FMapIf(Stream):
 
 
 class FTake(Stream):
-    def __init__(self, count, flux):
+    def __init__(self, count, predicate, flux):
         super().__init__(flux)
         self.count = count
+        self.predicate = predicate
         self.idx = 0
 
     def next(self, context):
         value, e, ctx = super(FTake, self).next(context)
-        self.idx = self.idx + 1
+        if e is not None:
+            return value, e, ctx
+        if self.predicate is not None:
+            valid, e = fu.try_or(partial(self.predicate), value, ctx)
+        else:
+            valid = False
+        if e is not None:
+            return value, e, ctx
+        if valid:
+            self.idx = self.idx + 1
         if self.idx <= self.count:
             return value, e, ctx
         else:

@@ -43,7 +43,7 @@ def test_parallel():
         _pr(m)
 
     res = from_iterator(range(0, 10))\
-        .parallel(50, show)\
+        .parallel(10, show)\
         .to_list()
     print(res)
     assert len(res) == 10
