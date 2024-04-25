@@ -1,6 +1,6 @@
 import logging
-import sys
 import threading
+import traceback
 import types
 import time
 from datetime import timedelta, datetime
@@ -8,7 +8,7 @@ from functools import partial
 from jsonmerge import merge
 from python_flux.flux_utilis import FluxUtils as fu
 from python_flux.subscribers import SSubscribe
-from concurrent.futures.thread import ThreadPoolExecutor
+
 
 class Flux(object):
 
@@ -137,13 +137,14 @@ class Flux(object):
 
         return FDoOnNext(partial(log_function, level, build_log_message), partial(log_error, build_error_message), True, self)
 
-    def parallel(self, pool_size=5):
+    def parallel(self, pool_size=5, metric_function=None):
         """
         Ejecuta la obtención de elementos del stream en paralelo
 
         :param pool_size: Pool de hilos a utilizar
+        :param metric_function: función(metrics) Esta es una función que si se setea recibe con cada elemento procesado  un bloque de métricas sobre la ejecución paralela
         """
-        return FParallel(pool_size, self)
+        return FParallel(pool_size, metric_function, self)
 
     def on_error_resume(self, resume=fu.default_error_resume, exceptions=[Exception]):
         """
@@ -240,9 +241,7 @@ class Stream(Flux):
         self.upstream.prepare_next()
 
     def next(self, context):
-        t = time.process_time()
         value, e, ctx = self.upstream.next(context)
-        elapsed_time = time.process_time() - t
         return value, e, ctx
 
 
@@ -387,20 +386,41 @@ class _Register:
         self.value = None
         self.e = None
         self.ctx = None
+        self.elapsed_time = 0
 
-    def execute(self, prepare_next, next, context):
-        self.value, self.e, self.ctx = next(context)
-        prepare_next()
+    def execute(self, sup, context):
+        t = time.process_time_ns()
+        self.value, self.e, self.ctx = sup.next(context)
+        if self.e is None:
+            sup.prepare_next()
+        self.elapsed_time = (time.process_time_ns() - t) / 1000
 
 
 class FParallel(Stream):
-    def __init__(self, pool, flux):
+    def __init__(self, pool, metric_func, flux):
         super().__init__(flux)
         self.pool_size = pool
+        self.metric_func = metric_func
         self.jobs = {}
         self.pool = {}
+        self.ctxs = {}
+        self.buffer_metrics = []
         self.ids = 0
+        self.last_ctx_id = 0
         self.waiting_to_stop = False
+
+    def show_metrics(self):
+        if self.metric_func is not None:
+            len_buffer = len(self.buffer_metrics)
+            diff_time = max(map(lambda p: p[2], self.buffer_metrics)) - min(map(lambda p: p[2], self.buffer_metrics))
+            metrics = {
+                'pool_size': self.pool_size,
+                'used_pool': len(self.pool),
+                'avg_used_pool': sum(map(lambda p: p[0], self.buffer_metrics)) / len_buffer if len_buffer > 0 else 0.0,
+                'avg_task_time_ms': sum(map(lambda p: p[1], self.buffer_metrics)) / len_buffer if len_buffer > 0 else 0.0,
+                'rate_rps': round(1000 * len(self.buffer_metrics) / diff_time if len_buffer > 0 and diff_time > 0 else 0.0, 2)
+            }
+            self.metric_func(metrics)
 
     def next(self, context):
         ctx = context
@@ -408,33 +428,41 @@ class FParallel(Stream):
             if not self.waiting_to_stop:
                 if len(self.pool) < self.pool_size:
                     reg = _Register(self.ids)
-                    t = threading.Thread(target=reg.execute, args=[super(FParallel, self).prepare_next, super(FParallel, self).next, context])
+                    t = threading.Thread(target=reg.execute, args=[super(FParallel, self), ctx])
                     self.jobs[self.ids] = reg
                     self.pool[self.ids] = t
                     self.ids = self.ids + 1
                     t.start()
-            jobs = self.pool.copy()
-            for i, t in jobs.items():
+            pools = self.pool.copy()
+            for i, t in pools.items():
                 try:
-                    t.join(0.001)
+                    t.join(0.01)
                     if t.is_alive():
                         continue
                     else:
                         self.pool.pop(i)
                         r = self.jobs.pop(i)
-                        ctx = merge(ctx, r.ctx)
+                        self.ctxs[i] = r.ctx
+                        self.buffer_metrics.append((len(self.pool), r.elapsed_time, time.process_time_ns() / 1000))
+                        if len(self.buffer_metrics) >= 10:
+                            self.buffer_metrics.pop(0)
+                        if self.last_ctx_id in self.ctxs:
+                            ctx = merge(ctx, self.ctxs.pop(self.last_ctx_id))
+                            self.last_ctx_id = self.last_ctx_id + 1
                         if isinstance(r.e, StopIteration):
                             self.waiting_to_stop = True
                             if len(self.pool) == 0:
+                                self.show_metrics()
                                 return None, StopIteration(), ctx
                             else:
                                 continue
                         if self.waiting_to_stop:
                             if len(self.pool) == 0:
+                                self.show_metrics()
                                 return None, StopIteration(), ctx
+                        self.show_metrics()
                         return r.value, r.e, ctx
                 except Exception as e:
-                    print(str(e))
                     return None, e, ctx
 
 

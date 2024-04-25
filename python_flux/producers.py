@@ -1,3 +1,5 @@
+import threading
+
 from python_flux.flux import Flux
 
 
@@ -33,11 +35,25 @@ class Producer(Flux):
         return None, None
 
 
+class LockedIterator(object):
+    def __init__(self, it):
+        self._lock = threading.Lock()
+        self._it = iter(it)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        with self._lock:
+            return next(self._it)
+
+
 class PFromIterator(Producer):
     def __init__(self, iterator):
         super(PFromIterator, self).__init__()
         try:
-            self.iterator = iterator if type(iterator) is iter else iter(iterator)
+            it = iterator if type(iterator) is iter else iter(iterator)
+            self.iterator = LockedIterator(it)
         except TypeError as e:
             raise e
 
@@ -52,7 +68,7 @@ class PFromIterator(Producer):
 class PFromGenerator(Producer):
     def __init__(self, function_gen):
         super(PFromGenerator, self).__init__()
-        self.function_gen = function_gen
+        self.function_gen = LockedIterator(function_gen)
         self.generator = None
 
     def _next(self, context):

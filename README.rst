@@ -80,6 +80,23 @@ Retrasa en delay milisegundos la ejecución de paso del flujo. Esto marca el tie
 -  **predicate**: Si es verdadero se aplica el delay establecido
 
 
+parallel(pool_size=5, metric_function=None)
+-------------------------------------------
+Consume elementos de un flujo en paralelo.
+Utiliza tantos hilos como se haya configurado en pool_size.
+Si se indica, con cada elemento procesado invoca a la función metric_function pasándole un mapa con la siguiente
+información:
+- pool_size: Tamaño del pool
+used_pool: Cantidad de hilos utilizados
+avg_used_pool: Promedio de hilos utilizados
+avg_task_time: Promedio de tiempo de ejecución de la obtención de elementos en paralelo
+rate_s: Tasa de procesamiento
+
+- **pool_size**: Pool de hilos a utilizar
+- **metric_function**: función(metrics) Esta es una función que si se setea recibe con cada elemento procesado  un bloque de métricas sobre la ejecución paralela
+
+
+
 take(n)
 -------
 

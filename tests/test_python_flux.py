@@ -1,4 +1,9 @@
 import datetime
+import random
+import sys
+import threading
+import time
+from functools import partial
 
 from python_flux.producers import from_iterator, from_generator
 
@@ -28,9 +33,17 @@ def test_do_on_next():
     flux.foreach()
 
 
+def _pr(msg):
+    sys.stdout.write(f'{msg}\n')
+    sys.stdout.flush()
+
+
 def test_parallel():
+    def show(m):
+        _pr(m)
+
     res = from_iterator(range(0, 10))\
-        .parallel(5)\
+        .parallel(50, show)\
         .to_list()
     print(res)
     assert len(res) == 10
