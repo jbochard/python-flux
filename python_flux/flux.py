@@ -400,9 +400,8 @@ class _Register:
 
     def execute(self, sup, context):
         t = time.process_time_ns()
+        sup.prepare_next()
         self.value, self.e, self.ctx = sup.next(context)
-        if self.e is None:
-            sup.prepare_next()
         self.elapsed_time = (time.process_time_ns() - t) / 1000
 
 
