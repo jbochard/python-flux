@@ -68,7 +68,7 @@ class PFromIterator(Producer):
 class PFromGenerator(Producer):
     def __init__(self, function_gen):
         super(PFromGenerator, self).__init__()
-        self.function_gen = LockedIterator(function_gen)
+        self.function_gen = function_gen
         self.generator = None
 
     def _next(self, context):

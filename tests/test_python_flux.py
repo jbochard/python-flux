@@ -39,11 +39,11 @@ def _pr(msg):
 
 
 def test_parallel():
-    def show(m):
+    def show(m,c):
         _pr(m)
 
     res = from_iterator(range(0, 10))\
-        .parallel(10, show)\
+        .parallel(pool_size=10, metric_function=show)\
         .to_list()
     print(res)
     assert len(res) == 10
