@@ -1,9 +1,6 @@
-import datetime
-import random
 import sys
-import threading
 import time
-from functools import partial
+from random import random, randrange
 
 from python_flux.producers import from_iterator, from_generator
 
@@ -42,11 +39,13 @@ def test_parallel():
     def show(m,c):
         _pr(m)
 
-    res = from_iterator(range(0, 10))\
+    max = 30
+    res = from_iterator(range(0, max))\
+        .delay_ms(randrange(300, 1500))\
         .parallel(pool_size=10, metric_function=show)\
         .to_list()
     print(res)
-    assert len(res) == 10
+    assert len(res) == max
 
 
 def test_on_error_resume():
