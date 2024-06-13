@@ -1,6 +1,5 @@
 import logging
 import threading
-import types
 import time
 import concurrent.futures as cr
 from datetime import timedelta, datetime
@@ -8,23 +7,20 @@ from functools import partial
 from statistics import mean
 
 from jsonmerge import merge
-from python_flux.flux_utilis import FluxUtils as fu
+from python_flux.flux_utilis import FluxUtils as fu, FluxValue, Register
 from python_flux.subscribers import SSubscribe
 
 
 class Flux(object):
 
-    def filter(self, predicate, on_mismatch=fu.default_action):
+    def filter(self, predicate):
         """
         Permite filtrar un flujo perimtiendo continuar a aquellos valores que cumplen con el
         predicado que se indica.
-        Si no se cumple el predicado opcionalmente se puede indicar una función que dado el valor y el contexto acutal
-        retorna el valor que se enviará al flujo.
 
         :param predicate: función(valor, contexto) que retorna un booleano
-        :param on_mismatch: función(valor, contexto) que retorna un valor alternativo al testeado originalmente
         """
-        return FFilter(predicate, on_mismatch, self)
+        return FFilter(predicate, self)
 
     def map(self, map_function):
         """
@@ -111,7 +107,8 @@ class Flux(object):
 
     def take(self, n, predicate=None):
         """
-        Corta la ejecución del flujo luego de n elementos procesados.
+        Corta la ejecución del flujo luego de n elementos que cumplan la condición dada por predicate.
+        Si predicate es None todo los valores son considerados.
 
         :param n: Cantidad de elementos procesados antes de cortar el flujo
         :param predicate: función(value, context) Si esta función retorna verdadero ese elemento es tomado en cuenta
@@ -167,6 +164,14 @@ class Flux(object):
         """
         return FParallel(pool_size, join_timeout, metric_function, metric_rate, metric_buffer_size, self)
 
+    def on_empty_resume(self, resume=fu.default_finish):
+        """
+        En caso de empty, este paso ejecuta la función resume que debe retornar el valor a retornar.
+
+        :param resume: función(contexto) Debe retornar el valor a substituir en el flujo.
+        """
+        return FOnEmptyResume(resume, self)
+
     def on_error_resume(self, resume=fu.default_error_resume, exceptions=[Exception]):
         """
         En caso de error, este paso ejecuta la función resume que debe retornar un valor
@@ -191,15 +196,21 @@ class Flux(object):
         """
         return FOnErrorRetry(retries, exceptions, delay_ms, self)
 
-    def subscribe(self, context={}, skip_error=False):
+    def subscribe(self, context={}, on_error='BREAK', on_empty='SKIP'):
         """
         Crea un objeto iterable a partir del flujo. Si se itera sobre este objeto se obtendrán
         los valores del flujo.
-        :param skip_error: Ignora errores al obtener los valores desde el flujo
+        :param on_error: Política al obtener un error.
+                         THROW=Lanza el error
+                         SKIP=Ignora el error y busca el siguiente valor
+                         BREAK=Detiene la ejecución sin error
+        :param on_empty: Política al obtener un empty.
+                         NONE=Retorna un valor None
+                         SKIP=Ignora el empty y busca el siguiente valor
         :param context: Contexto inicial para el flujo
         :return: Objeto iterable
         """
-        return SSubscribe(skip_error, context, self)
+        return SSubscribe(on_error, on_empty, context, self)
 
     def foreach(self, on_success=fu.default_success, on_error=fu.default_error, on_finish=fu.default_finish, context={}):
         """
@@ -211,7 +222,7 @@ class Flux(object):
         :param on_finish: función(contexto) se invoca al finalizar el flujo
         :param context: Contexto inicial para el flujo
         """
-        flux = self.subscribe(context, True)
+        flux = self.subscribe(context, 'THROW', 'SKIP')
         while True:
             try:
                 value = next(flux)
@@ -222,14 +233,20 @@ class Flux(object):
             except Exception as ex:
                 _, e = fu.try_or(partial(on_error), ex, value, context)
 
-    def to_list(self, context={}, skip_error=True):
+    def to_list(self, context={}, on_error='BREAK', on_empty='SKIP'):
         """
         Itera sobre los elementos del flujo y los retorna todos dentro de una lista.
         :param context: contexto inicial para el flujo
-        :param skip_error: Ignora errores al obtener los valores desde el flujo
+        :param on_error: Política al obtener un error.
+                         THROW=Lanza el error
+                         SKIP=Ignora el error y busca el siguiente valor
+                         BREAK=Detiene la ejecución sin error
+        :param on_empty: Política al obtener un empty.
+                         NONE=Retorna un valor None
+                         SKIP=Ignora el empty y busca el siguiente valor
         :return: Lista de elementos
         """
-        return list(iter(self.subscribe(context, skip_error)))
+        return list(iter(self.subscribe(context, on_error, on_empty)))
 
     def collect(self, init=lambda c: {}, reduce=lambda v, a: a, context={}):
         """
@@ -242,7 +259,7 @@ class Flux(object):
         :return: Acumulador
         """
         acum = init(context)
-        flux = self.subscribe(context, False)
+        flux = self.subscribe(context, 'THROW', 'SKIP')
         while True:
             try:
                 value = next(flux)
@@ -262,33 +279,30 @@ class Stream(Flux):
         self.upstream.prepare_next()
 
     def next(self, context):
-        value, e, ctx = self.upstream.next(context)
-        return value, e, ctx
+        value, ctx = self.upstream.next(context)
+        return value, ctx
 
 
 class FFilter(Stream):
-    def __init__(self, p, m, flux):
+    def __init__(self, p, flux):
         super().__init__(flux)
         self.predicate = p
-        self.on_mismatch = m
 
     def next(self, context):
-        value, e, ctx = super(FFilter, self).next(context)
-        if e is not None:
-            return value, e, ctx
+        value, ctx = super(FFilter, self).next(context)
+        if value.is_error():
+            return value, ctx
 
-        valid, e = fu.try_or(partial(self.predicate), value, ctx)
-        while e is None and not valid:
-            _, e = fu.try_or(partial(self.on_mismatch), value, ctx)
-            if e is not None:
-                return value, e, ctx
-            super(FFilter, self).prepare_next()
-            value, e, new_ctx = super(FFilter, self).next(ctx)
-            if e is not None:
-                return value, e, ctx
-            ctx = merge(ctx, new_ctx)
-            valid, e = fu.try_or(partial(self.predicate), value, ctx)
-        return value, e, ctx
+        v = fu.try_or(partial(self.predicate), value.val(), ctx)
+        if v.is_error():
+            return v, ctx
+
+        if v.is_empty():
+            return v, ctx
+
+        if not v.val():
+            return FluxValue.empty(), ctx
+        return value, ctx
 
 
 class FMapIf(Stream):
@@ -298,21 +312,20 @@ class FMapIf(Stream):
         self.function = f
 
     def next(self, context):
-        value, e, ctx = super(FMapIf, self).next(context)
-        if e is not None:
-            return value, e, ctx
-
-        valid, e = fu.try_or(partial(self.predicate), value, ctx)
-        if e is not None:
-            return value, e, ctx
-
-        if valid:
-            v, e = fu.try_or(partial(self.function), value, ctx)
-            if e is not None:
-                return value, e, ctx
-            return v, e, ctx
-
-        return value, e, ctx
+        value, ctx = super(FMapIf, self).next(context)
+        if value.is_error():
+            return value, ctx
+        if value.is_empty():
+            return value, ctx
+        valid = fu.try_or(partial(self.predicate), value.val(), ctx)
+        if valid.is_error():
+            return valid, ctx
+        if valid.val():
+            v = fu.try_or(partial(self.function), value.val(), ctx)
+            if v.is_error():
+                return v, ctx
+            return v, ctx
+        return value, ctx
 
 
 class FTake(Stream):
@@ -323,21 +336,21 @@ class FTake(Stream):
         self.idx = 0
 
     def next(self, context):
-        value, e, ctx = super(FTake, self).next(context)
-        if e is not None:
-            return value, e, ctx
+        value, ctx = super(FTake, self).next(context)
+        if value.is_error() or value.is_empty():
+            return value, ctx
         if self.predicate is not None:
-            valid, e = fu.try_or(partial(self.predicate), value, ctx)
-            if e is not None:
-                return value, e, ctx
+            valid = fu.try_or(partial(self.predicate), value.val(), ctx)
+            if valid.is_error():
+                return valid, ctx
+            if valid.val():
+                self.idx = self.idx + 1
         else:
-            valid = True
-        if valid:
             self.idx = self.idx + 1
         if self.idx <= self.count:
-            return value, e, ctx
+            return value, ctx
         else:
-            return value, StopIteration(), ctx
+            return FluxValue.stop(), ctx
 
 
 class FTakeDuringTimeDelta(Stream):
@@ -353,11 +366,11 @@ class FTakeDuringTimeDelta(Stream):
         if self.starttime is None:
             self.starttime = datetime.utcnow()
 
-        value, e, ctx = super(FTakeDuringTimeDelta, self).next(context)
+        value, ctx = super(FTakeDuringTimeDelta, self).next(context)
         if self.starttime + self.timedelta >= datetime.utcnow():
-            return value, e, ctx
+            return value, ctx
         else:
-            return value, StopIteration(), ctx
+            return FluxValue.stop(), ctx
 
 
 class FChunks(Stream):
@@ -365,31 +378,34 @@ class FChunks(Stream):
         super().__init__(flux)
         self.count = count
         self.buffer = []
-        self.stop_iteration = False
+        self.stop_iteration = None
+        self.last_context = None
 
     def prepare_next(self):
-        if not self.stop_iteration:
+        if self.stop_iteration is None:
             super(FChunks, self).prepare_next()
 
     def next(self, context):
-        if self.stop_iteration:
-            return self.buffer, StopIteration(), context
-        ctx = context
-        while len(self.buffer) < self.count:
-            value, e, new_ctx = super(FChunks, self).next(ctx)
-            if e is not None:
-                self.stop_iteration = True
-                if len(self.buffer) == 0:
-                    return self.buffer, StopIteration(), ctx
+        if self.stop_iteration is not None:
+            v = self.stop_iteration
+            self.stop_iteration = None
+            return v, context
+        value, new_ctx = super(FChunks, self).next(context)
+        if not value.is_value():
+            self.stop_iteration = value
+            if len(self.buffer) > 0:
                 buf = self.buffer.copy()
                 self.buffer = []
-                return buf, None, ctx
-            self.buffer.append(value)
-            super(FChunks, self).prepare_next()
-            ctx = merge(ctx, new_ctx)
-        buf = self.buffer.copy()
-        self.buffer = []
-        return buf, None, ctx
+                return FluxValue.value(buf), self.last_context
+            return value, context
+        self.last_context = new_ctx
+        self.buffer.append(value.val())
+        if len(self.buffer) < self.count:
+            return FluxValue.empty(), context
+        else:
+            buf = self.buffer.copy()
+            self.buffer = []
+            return FluxValue.value(buf), self.last_context
 
 
 class FDelayMs(Stream):
@@ -399,15 +415,15 @@ class FDelayMs(Stream):
         self.predicate = predicate
 
     def next(self, context):
-        value, e, ctx = super(FDelayMs, self).next(context)
-        if e is not None:
-            return value, e, ctx
-        valid, e = fu.try_or(partial(self.predicate), value, ctx)
-        if e is not None:
-            return value, e, ctx
-        if valid:
+        value, ctx = super(FDelayMs, self).next(context)
+        if value.is_error():
+            return value, context
+        valid = fu.try_or(partial(self.predicate), value, ctx)
+        if valid.is_error():
+            return valid, context
+        if valid.val():
             time.sleep(self.delay / 1000)
-        return value, e, ctx
+        return value, ctx
 
 
 class FRateRPS(Stream):
@@ -418,36 +434,19 @@ class FRateRPS(Stream):
 
     def next(self, context):
         start_time = time.monotonic()
-        value, e, ctx = super(FRateRPS, self).next(context)
-        if e is not None:
-            return value, e, ctx
+        value, ctx = super(FRateRPS, self).next(context)
+        if value.is_error():
+            return value, ctx
         end_time = time.monotonic()
 
-        valid, e = fu.try_or(partial(self.predicate), value, ctx)
-        if e is not None:
-            return value, e, ctx
-        if valid:
+        valid = fu.try_or(partial(self.predicate), value, ctx)
+        if valid.is_error():
+            return valid, ctx
+        if valid.val():
             delay = (1 / self.rate) - (end_time - start_time)
             if delay > 0:
                 time.sleep(delay)
-        return value, e, ctx
-
-
-class _Register:
-
-    def __init__(self):
-        self.value = None
-        self.e = None
-        self.ctx = None
-        self.elapsed_time = 0
-
-    def execute(self, sup, context):
-        t = time.monotonic()
-        sup.prepare_next()
-        self.value, self.e, ctx = sup.next(context)
-        self.ctx = merge(context, ctx)
-        self.elapsed_time = (time.monotonic() - t)
-        return self
+        return value, ctx
 
 
 class FParallel(Stream):
@@ -465,7 +464,7 @@ class FParallel(Stream):
         self.last_metric_execution = time.monotonic()
         self.waiting_to_stop = False
 
-    def show_metrics(self, elapsed_time, ctx):
+    def __show_metrics(self, elapsed_time, ctx):
         if self.metric_func is not None:
             now = time.monotonic()
             self.buffer_metrics.append((len(self.futures), elapsed_time, now))
@@ -487,33 +486,37 @@ class FParallel(Stream):
                     self.last_metric_execution = now
         self.last_metric_execution = now
 
+    def prepare_next(self):
+        pass
+
     def next(self, context):
-        while not self.waiting_to_stop or len(self.futures) > 0:
-            if not self.waiting_to_stop:
-                self.semaphore.acquire()
-                try:
-                    future = self.executor.submit(_Register().execute, super(FParallel, self), context)
-                    self.futures.append(future)
-                except:
-                    self.semaphore.release()
-                    raise
-                else:
-                    future.add_done_callback(lambda x: self.semaphore.release())
+        if not self.waiting_to_stop:
+            self.semaphore.acquire()
             try:
-                futures = self.futures.copy()
-                for future in cr.as_completed(futures, timeout=self.join_timeout):
-                    self.futures.remove(future)
-                    r = future.result()
-                    self.show_metrics(r.elapsed_time, r.ctx)
-                    if not self.waiting_to_stop and r.e is not None and isinstance(r.e, StopIteration):
-                        self.waiting_to_stop = True
-                        self.executor.shutdown(wait=True)
-                        break
-                    if r.e is None or not isinstance(r.e, StopIteration):
-                        return r.value, r.e, r.ctx
-            except TimeoutError:
-                pass
-        return None, StopIteration(), {}
+                future = self.executor.submit(Register(super(FParallel, self)).execute, context)
+                self.futures.append(future)
+            except Exception as e:
+                self.semaphore.release()
+                raise e
+            else:
+                future.add_done_callback(lambda x: self.semaphore.release())
+        if self.waiting_to_stop and len(self.futures) == 0:
+            return FluxValue.stop(), context
+        futures = self.futures.copy()
+        try:
+            for future in cr.as_completed(futures, timeout=self.join_timeout):
+                self.futures.remove(future)
+                r = future.result()
+                self.__show_metrics(r.elapsed_time, r.ctx)
+                if not self.waiting_to_stop and r.value.is_stop():
+                    self.waiting_to_stop = True
+                    self.executor.shutdown(wait=True)
+                    return FluxValue.empty(), context
+                if not r.value.is_stop():
+                    return r.value, r.ctx
+        except TimeoutError:
+            pass
+        return FluxValue.empty(), context
 
 
 class FMap(Stream):
@@ -522,13 +525,11 @@ class FMap(Stream):
         self.function = func
 
     def next(self, context):
-        value, e, ctx = super(FMap, self).next(context)
-        if e is not None:
-            return value, e, ctx
-        mapped_value, e = fu.try_or(partial(self.function), value, ctx.copy())
-        if e is not None:
-            return value, e, ctx
-        return mapped_value, e, ctx
+        value, ctx = super(FMap, self).next(context)
+        if not value.is_value():
+            return value, context
+        mapped_value = fu.try_or(partial(self.function), value.val(), ctx.copy())
+        return mapped_value, ctx
 
 
 class FMapContext(Stream):
@@ -537,13 +538,13 @@ class FMapContext(Stream):
         self.function = func
 
     def next(self, context):
-        value, e, ctx = super(FMapContext, self).next(context)
-        if e is not None:
-            return value, e, ctx
-        mapped_context, e = fu.try_or(partial(self.function), value, ctx.copy())
-        if e is not None:
-            return value, e, ctx
-        return value, e, merge(ctx, mapped_context)
+        value, ctx = super(FMapContext, self).next(context)
+        if value.is_value():
+            mapped_context = fu.try_or(partial(self.function), value.val(), ctx.copy())
+            if mapped_context.is_error():
+                return mapped_context, ctx
+            return value, merge(ctx, mapped_context.val())
+        return value, ctx
 
 
 class FFlatMap(Stream):
@@ -559,29 +560,40 @@ class FFlatMap(Stream):
             self.current.prepare_next()
 
     def next(self, context):
-        ctx = context.copy()
         while True:
-            while self.current is None:
-                value, e, ctx = super(FFlatMap, self).next(ctx)
-                if e is not None:
-                    return None, e, ctx
-                func, e = fu.try_or(partial(self.function), value, ctx)
-                if e is not None:
-                    return None, e, ctx
-                fgen = func
-                if isinstance(func, types.GeneratorType):
-                    from python_flux.producers import PFromGenerator
-                    fgen = PFromGenerator(func)
-                self.current = fgen
+            if self.current is None:
+                value, ctx = super(FFlatMap, self).next(context.copy())
+                if not value.is_value():
+                    return value, context
+                flux_val = fu.try_or(partial(self.function), value.val(), context.copy())
+                if flux_val.is_error():
+                    return flux_val, context
+                self.current = flux_val.val()
                 self.current.prepare_next()
 
-            cur_value, cur_e, cur_ctx = self.current.next(ctx)
-            if cur_e is None:
-                return cur_value, cur_e, cur_ctx
-            if isinstance(cur_e, StopIteration):
+            cur_value, cur_ctx = self.current.next(context.copy())
+            if cur_value.is_stop():
                 self.current = None
                 super(FFlatMap, self).prepare_next()
-            ctx = merge(ctx, cur_ctx)
+                continue
+            if cur_value.is_error():
+                return cur_value, context
+            return cur_value, cur_ctx
+
+
+class FOnEmptyResume(Stream):
+    def __init__(self, f, flux):
+        super().__init__(flux)
+        self.on_empty_resume = f
+
+    def next(self, context):
+        value, ctx = super(FOnEmptyResume, self).next(context)
+        if value.is_stop():
+            return value, context
+        if value.is_empty():
+            v = fu.try_or(partial(self.on_empty_resume), context)
+            return v, ctx
+        return value, ctx
 
 
 class FOnErrorResume(Stream):
@@ -591,17 +603,13 @@ class FOnErrorResume(Stream):
         self.exceptions = exceptions
 
     def next(self, context):
-        value, e, ctx = super(FOnErrorResume, self).next(context)
-        if e is None:
-            return value, e, ctx
-        if isinstance(e, StopIteration):
-            return None, e, ctx
-        if any([isinstance(e, ex) for ex in self.exceptions]):
-            v, e = fu.try_or(partial(self.on_error_resume), e, value, ctx)
-            if e is not None:
-                return value, e, ctx
-            value = v
-        return value, None, ctx
+        value, ctx = super(FOnErrorResume, self).next(context)
+        if value.is_stop():
+            return value, context
+        if value.is_error(self.exceptions):
+            v = fu.try_or(partial(self.on_error_resume), value.err(), value.val(), context)
+            return v, ctx
+        return value, ctx
 
 
 class FOnErrorRetry(Stream):
@@ -617,14 +625,16 @@ class FOnErrorRetry(Stream):
         self.current_retries = self.retries
 
     def next(self, context):
-        value, e, ctx = super(FOnErrorRetry, self).next(context)
-        while e is not None and self.current_retries > 0:
+        value, ctx = super(FOnErrorRetry, self).next(context)
+        if value.is_stop():
+            return value, context
+        while value.is_error(self.exceptions) and self.current_retries > 0:
             d = self.delay_ms(self.retries - self.current_retries) / 1000
             if d > 0:
                 time.sleep(d)
             self.current_retries = self.current_retries - 1
-            value, e, ctx = super(FOnErrorRetry, self).next(context)
-        return value, e, ctx
+            value, ctx = super(FOnErrorRetry, self).next(context)
+        return value, ctx
 
 
 class FDoOnNext(Stream):
@@ -636,17 +646,17 @@ class FDoOnNext(Stream):
         self.execute_async = exec_async
 
     def next(self, context):
-        value, e, ctx = super(FDoOnNext, self).next(context)
-        if e is not None:
+        value, ctx = super(FDoOnNext, self).next(context)
+        if value.is_error():
             if self.execute_async:
-                t = threading.Thread(target=self.on_error, args=(e, ctx,))
+                t = threading.Thread(target=self.on_error, args=(value.err(), context,))
                 t.start()
             else:
-                self.on_error(e, ctx)
-            return value, e, ctx
+                self.on_error(value.err(), context)
+            return value, context
         if self.execute_async:
-            t = threading.Thread(target=self.on_next, args=(value, ctx,))
+            t = threading.Thread(target=self.on_next, args=(value.val(), ctx,))
             t.start()
         else:
-            self.on_next(value, ctx)
-        return value, e, ctx
+            self.on_next(value.val(), ctx)
+        return value, ctx

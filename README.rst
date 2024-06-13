@@ -12,13 +12,9 @@ filter(predicate, on_mismatch)
 
 Permite filtrar un flujo permitiendo continuar a aquellos valores que cumplen con el predicado que se indica.
 
-Si no se cumple el predicado opcionalmente se puede indicar una función que dado el valor y el contexto actual retorna el valor que se enviará al flujo.
-
 **Parámetros:**
 
 -  **predicate**: función(valor, contexto) que retorna un booleano
-
--  **on_mismatch**: función(valor, contexto) que retorna un valor alternativo al testeado originalmente
 
 
 map(map_function)
@@ -95,8 +91,21 @@ Retrasa en delay milisegundos la ejecución de paso del flujo. Esto marca el tie
 -  **predicate**: Si es verdadero se aplica el delay establecido
 
 
-parallel(pool_size=5, metric_function=None)
+rate(rate, must_apply=fu.default_predicate)
 -------------------------------------------
+Fuerza un flujo constante de procesamiento de elementos en el stream.
+Para esto una vez fijado el rate de procesamiento en RPS, se mide el tiempo de producción de cada elemento y si este es inerior al indicado por el rate se espera el tiempo suficiente para asegurar el rate configurado.
+Si el tiempo de procesamiento es superior a lo indicado por el rate se procesa si espera el mensaje.
+
+**Parámetros:**
+
+-  **rate**: Delay en milisegundos que se retrasará el procesamiento de los elementos del flujo
+
+- **must_apply**: Si es verdadero se aplica el delay establecido
+
+
+parallel(pool_size=5, join_timeout=0.001, metric_function=None, metric_rate=10, metric_buffer_size=10)
+------------------------------------------------------------------------------------------------------
 Consume elementos de un flujo en paralelo.
 Utiliza tantos hilos como se haya configurado en pool_size.
 Si se indica, con cada elemento procesado invoca a la función metric_function pasándole un mapa con la siguiente
@@ -116,18 +125,27 @@ información:
 
 - **pool_size**: Pool de hilos a utilizar
 
+- **join_timeout**: Tiempo de espera de join en segundos por cada hilo (decimal)
+
 - **metric_function**: función(metrics, context) Esta es una función que si se setea recibe con cada elemento procesado un bloque de métricas sobre la ejecución paralela
 
+- **metric_rate**: Cantidad de evaluaciones por segundo que se ejecuta la función metric_function.
+                   Si es None se ejecuta siempre
+- **metric_buffer_size**: Tamaño del buffer utilizado para generar las métricas recibidas por metric_function
 
-take_if(n, predicate=None)
---------------------------
+
+take(n, predicate=None)
+-----------------------
 
 Corta la ejecución del flujo luego de procesar n elementos que cumplen con la condición indicada.
 Si no se indica una función de predicado se cortará la ejecución al procesar n elementos.
 
 **Parámetros:**
+
 -  **n**: Cantidad de elementos procesados antes de cortar el flujo
+
 -  **predicate**: función(value, context) Si esta función retorna verdadero ese elemento es tomado en cuenta
+
 
 take_until_seconds(n)
 ---------------------
@@ -140,6 +158,7 @@ La ejecución se cortará si al momento de evaluar este paso el tiempo transcurr
 
 -  **n**: Cantidad de segundos que el stream procesa elementos.
 
+
 chunks(n)
 ---------
 
@@ -149,7 +168,7 @@ Si algún valor mientras se construye el chunk da error se emiten los elementos 
 
 **Parámetros:**
 
-- ***n***: Cantidad de elementos recolectados antes de emitir el evento de lista.
+- **n**: Cantidad de elementos recolectados antes de emitir el evento de lista.
 
 
 log(build_log_message, build_error_message, level)
@@ -195,18 +214,25 @@ Esto lo hace sólo para las excepciones indicadas por **exceptions** y los reint
 -  **exceptions**: Lista de excepciones para los que se aplica el método resume.
 
 
-subscribe(context, skip_error)
-------------------------------
+subscribe(contex, on_error='BREAK', on_empty='SKIP')
+----------------------------------------------------
 
 Crea un objeto iterable a partir del flujo. Si se itera sobre este objeto se obtendrán los valores del flujo.
 
 **Parámetros:**
 
--  **skip_error**: Ignora errores al obtener los valores desde el flujo
+- **on_error**: Política al obtener un error.
+                 THROW=Lanza el error
+                 SKIP=Ignora el error y busca el siguiente valor
+                 BREAK=Detiene la ejecución sin error
 
--  **context**: Contexto inicial para el flujo
+- **on_empty**: Política al obtener un empty.
+                 NONE=Retorna un valor None
+                 SKIP=Ignora el empty y busca el siguiente valor
+- **context**: Contexto inicial para el flujo
 
--  **return**: Objeto iterable
+- **return**: Objeto iterable
+
 
 
 foreach(on_success=fu.default_success, on_error=fu.default_error, context={})
@@ -225,8 +251,8 @@ Itera sobre los elementos del flujo e invoca a funciones **on_success** y on_err
 -  **context**: Contexto inicial para el flujo
 
 
-to_list(context={}, skip_error=True)
-------------------------------------
+to_list(context={}, on_error='BREAK', on_empty='SKIP')
+------------------------------------------------------
 
 Itera sobre los elementos del flujo y los retorna todos dentro de una lista.
 
@@ -234,7 +260,14 @@ Itera sobre los elementos del flujo y los retorna todos dentro de una lista.
 
 -  **context**: contexto inicial para el flujo
 
--  **skip_error**: Ignora errores al obtener los valores desde el flujo
+- **on_error**: Política al obtener un error.
+                 THROW=Lanza el error
+                 SKIP=Ignora el error y busca el siguiente valor
+                 BREAK=Detiene la ejecución sin error
+
+- **on_empty**: Política al obtener un empty.
+                 NONE=Retorna un valor None
+                 SKIP=Ignora el empty y busca el siguiente valor
 
 -  **return**: Lista de elementos
 

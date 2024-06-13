@@ -43,6 +43,7 @@ def test_parallel():
         .delay_ms(randrange(300, 1500))\
         .parallel(pool_size=10, metric_function=show)\
         .to_list()
+    assert sorted(res) == list(range(0, _max))
     assert len(res) == _max
 
 
@@ -51,6 +52,13 @@ def test_on_error_resume():
         .map(lambda v, c: round(1/v, 1))\
         .on_error_resume(lambda e, v, c: 1000)
     assert flux.to_list() == [-0.2, -0.3, -0.5, -1.0, 1000, 1.0, 0.5, 0.3]
+
+
+def test_on_empty_resume():
+    flux = from_iterator(range(-4, 4))\
+        .filter(lambda v, c: v > 0)\
+        .on_empty_resume(lambda c: 1000)
+    assert flux.to_list() == [1000, 1000, 1000, 1000, 1000, 1, 2, 3]
 
 
 def test_on_error_retry():

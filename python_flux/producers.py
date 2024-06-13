@@ -1,6 +1,6 @@
-import threading
-
+from threading import Lock
 from python_flux.flux import Flux
+from python_flux.flux_utilis import FluxValue
 
 
 def from_generator(generator):
@@ -14,46 +14,38 @@ def from_iterator(iterator):
 class Producer(Flux):
     def __init__(self):
         super(Producer, self).__init__()
-        self.value = None
+        self._lock = Lock()
+        self.prepared = 0
+        self.value = []
 
     def prepare_next(self):
-        self.value = None
+        self.prepared += 1
 
     def get_value(self):
         return self.value
 
     def next(self, context):
-        if self.value is not None:
-            return self.value, None, context
-        v, e = self._next(context)
-        if e is None:
-            self.value = v
-            return self.value, None, context
-        return None, e, context
+        with self._lock:
+            if self.prepared > 0:
+                v, e = self._next(context)
+                self.prepared -= 1
+                if e is not None:
+                    self.value = FluxValue.error(e)
+                elif v is None:
+                    self.value = FluxValue.empty()
+                else:
+                    self.value = FluxValue.value(v)
+            return self.value, context
 
     def _next(self, context):
         return None, None
-
-
-class LockedIterator(object):
-    def __init__(self, it):
-        self._lock = threading.Lock()
-        self._it = iter(it)
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        with self._lock:
-            return next(self._it)
 
 
 class PFromIterator(Producer):
     def __init__(self, iterator):
         super(PFromIterator, self).__init__()
         try:
-            it = iterator if type(iterator) is iter else iter(iterator)
-            self.iterator = LockedIterator(it)
+            self.iterator = iterator if type(iterator) is iter else iter(iterator)
         except TypeError as e:
             raise e
 
